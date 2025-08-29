@@ -122,7 +122,7 @@ const generateBudgetPdf = (budget, companyInfo, companyLogo) => {
     
     // --- SEÇÃO 5: TOTAIS (em caixas) ---
     drawLabeledBox(doc, 'SUB-TOTAL GERAL', formatCurrency(budget.subtotal + budget.finalHelperCost + budget.finalDeliveryFee), margin, finalY, boxWidthThird, 15, { align: 'right' });
-    drawLabeledBox(doc, 'DESCONTO', formatCurrency(0), margin + boxWidthThird + 3, finalY, boxWidthThird, 15, { align: 'right' });
+    drawLabeledBox(doc, 'DESCONTO', `- ${formatCurrency(budget.finalDiscount || 0)}`, margin + boxWidthThird + 3, finalY, boxWidthThird, 15, { align: 'right' });
     drawLabeledBox(doc, 'TOTAL GERAL', formatCurrency(budget.grandTotal), margin + (boxWidthThird * 2) + 6, finalY, boxWidthThird, 15, { align: 'right', isBold: true });
     finalY += 20;
 

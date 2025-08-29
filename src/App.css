@@ -152,11 +152,11 @@ body {
 .btn-back { background-color: #6b7280; }
 .btn-back:hover { background-color: #4b5563; }
 
-.btn-add { background-color: #4f46e5; }
-.btn-add:hover { background-color: #4338ca; }
+.btn-add { background-color: #D97706; } 
+.btn-add:hover { background-color: #B45309; }
 
-.btn-secondary { background-color: #2563eb; }
-.btn-secondary:hover { background-color: #1d4ed8; }
+.btn-secondary { background-color: #374151; } 
+.btn-secondary:hover { background-color: #1F2937; }
 
 .btn-save { background-color: #16a34a; }
 .btn-save:hover { background-color: #15803d; }
@@ -443,4 +443,124 @@ tbody tr:nth-of-type(even) {
 .edge-segment.right {
     grid-column: 3 / 4;
     grid-row: 2 / 3;
+}
+
+/* ===== ESTILOS PARA ETIQUETAS DO SELETOR 2D ===== */
+.visual-selector-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center; /* Centraliza todo o bloco */
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+
+.dimension-label {
+    font-size: 0.7rem;
+    color: #6b7280;
+    font-weight: 500;
+    text-transform: uppercase;
+}
+
+/* Etiqueta vertical para o Comprimento */
+.dimension-label.vertical {
+    writing-mode: vertical-rl; /* Gira o texto 90 graus */
+    transform: rotate(180deg); /* Ajusta a orientação da leitura */
+    padding-bottom: 1rem;
+}
+
+/* Etiqueta horizontal para a Largura */
+.dimension-label.horizontal {
+    display: block;
+    text-align: center;
+    margin-bottom: 0.5rem;
+}
+
+/* Ajuste no seletor para remover a margem que agora está no wrapper */
+.piece-visual-selector {
+    margin: 0;
+}
+
+/* ===== ESTILOS PARA O MODAL DE CONFIRMAÇÃO ===== */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    animation: fadeIn 0.3s ease;
+}
+
+.modal-content {
+    background-color: white;
+    padding: 1.5rem;
+    border-radius: 1rem;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    width: 100%;
+    max-width: 450px;
+    animation: slideIn 0.3s ease;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #e5e7eb;
+    padding-bottom: 1rem;
+    margin-bottom: 1rem;
+}
+
+.modal-title {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.modal-close-btn {
+    background: none;
+    border: none;
+    font-size: 1.8rem;
+    font-weight: 300;
+    line-height: 1;
+    cursor: pointer;
+    color: #6b7280;
+}
+
+.modal-body {
+    margin-bottom: 1.5rem;
+    color: #4b5563;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+}
+
+/* Botão de exclusão específico para o modal */
+.btn-delete-action {
+    padding: 0.75rem 1.25rem;
+    font-weight: 600;
+    color: white;
+    border: none;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    background-color: #dc2626; /* Vermelho */
+}
+.btn-delete-action:hover {
+    background-color: #b91c1c;
+}
+
+/* Animações */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+@keyframes slideIn {
+    from { transform: translateY(-30px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
 }

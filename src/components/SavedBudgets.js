@@ -1,17 +1,21 @@
 // ARQUIVO COMPLETO E ATUALIZADO: src/components/SavedBudgets.js
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { collection, getDocs, doc, deleteDoc, updateDoc } from 'firebase/firestore'; // Adicionado updateDoc
+import { collection, getDocs, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { EditIcon, TrashIcon, DownloadIcon } from './icons';
 import { getImageBase64, formatCurrency } from '../utils/helpers';
 import generateBudgetPdf from '../utils/pdfGenerator';
 import { qrCodeBase64 } from '../utils/qrCodeImage';
+import Modal from './Modal'; // NOVO: Importa o componente Modal
 
 const SavedBudgets = ({ setCurrentPage, handleEditBudget, db, DADOS_DA_EMPRESA, logoDaEmpresa }) => {
     const [budgets, setBudgets] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [loading, setLoading] = useState(true);
+
+    // NOVO: State para controlar o modal de confirmação
+    const [modalState, setModalState] = useState({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
     const statusOptions = ['Pendente', 'Aprovado', 'Em Produção', 'Concluído', 'Recusado'];
 
@@ -43,20 +47,36 @@ const SavedBudgets = ({ setCurrentPage, handleEditBudget, db, DADOS_DA_EMPRESA, 
     useEffect(() => {
         fetchBudgets();
     }, [fetchBudgets]);
+    
+    // NOVO: Função para fechar o modal
+    const closeModal = () => {
+        setModalState({ isOpen: false, title: '', message: '', onConfirm: () => {} });
+    };
 
-    const handleDelete = async (id, budgetId) => {
-        if (window.confirm(`Tem certeza que deseja excluir o orçamento Nº ${budgetId}?`)) {
-            const toastId = toast.loading('Excluindo orçamento...');
-            try {
-                await deleteDoc(doc(db, "budgets", id));
-                toast.success(`Orçamento Nº ${budgetId} excluído!`, { id: toastId });
-                fetchBudgets();
-            }
-            catch (error) {
-                console.error("Erro ao excluir:", error);
-                toast.error("Erro ao excluir o orçamento.", { id: toastId });
-            }
+    // NOVO: Função que efetivamente deleta após a confirmação no modal
+    const handleDeleteConfirm = async (id, budgetId) => {
+        const toastId = toast.loading('Excluindo orçamento...');
+        try {
+            await deleteDoc(doc(db, "budgets", id));
+            toast.success(`Orçamento Nº ${budgetId} excluído!`, { id: toastId });
+            closeModal();
+            fetchBudgets(); // Re-busca a lista atualizada
         }
+        catch (error) {
+            console.error("Erro ao excluir:", error);
+            toast.error("Erro ao excluir o orçamento.", { id: toastId });
+            closeModal();
+        }
+    };
+
+    // MUDANÇA: Função de delete agora apenas ABRE o modal
+    const handleDelete = (id, budgetId) => {
+        setModalState({
+            isOpen: true,
+            title: 'Confirmar Exclusão',
+            message: `Tem certeza que deseja excluir o orçamento Nº ${budgetId}? Esta ação não pode ser desfeita.`,
+            onConfirm: () => handleDeleteConfirm(id, budgetId)
+        });
     };
 
     const handleDownloadPdf = async (budgetToDownload) => {
@@ -73,7 +93,6 @@ const SavedBudgets = ({ setCurrentPage, handleEditBudget, db, DADOS_DA_EMPRESA, 
         }
     };
 
-    // --- NOVA FUNÇÃO PARA ALTERAR O STATUS ---
     const handleStatusChange = async (id, newStatus) => {
         const toastId = toast.loading('Atualizando status...');
         try {
@@ -81,21 +100,17 @@ const SavedBudgets = ({ setCurrentPage, handleEditBudget, db, DADOS_DA_EMPRESA, 
             await updateDoc(budgetRef, {
                 status: newStatus
             });
-
-            // Atualiza o estado local para a UI responder imediatamente
             setBudgets(currentBudgets => 
                 currentBudgets.map(b => 
                     b.id === id ? { ...b, status: newStatus } : b
                 )
             );
-            
             toast.success('Status atualizado!', { id: toastId });
         } catch (error) {
             console.error("Erro ao atualizar status:", error);
             toast.error('Não foi possível atualizar o status.', { id: toastId });
         }
     };
-
 
     return (
         <main className="main-content">
@@ -124,7 +139,7 @@ const SavedBudgets = ({ setCurrentPage, handleEditBudget, db, DADOS_DA_EMPRESA, 
                                     <th>Nº</th>
                                     <th className="th-name">Cliente</th>
                                     <th>Projeto</th>
-                                    <th>Status</th> {/* <-- NOVA COLUNA */}
+                                    <th>Status</th>
                                     <th className="th-value">Valor</th>
                                     <th className="th-actions">Ações</th>
                                 </tr>
@@ -135,7 +150,6 @@ const SavedBudgets = ({ setCurrentPage, handleEditBudget, db, DADOS_DA_EMPRESA, 
                                         <td>{b.budgetId || 'N/A'}</td>
                                         <td className="td-name">{b.clientName}</td>
                                         <td>{b.projectName}</td>
-                                        {/* --- CÉLULA DO STATUS COM DROPDOWN PARA ALTERAÇÃO --- */}
                                         <td>
                                             <select 
                                                 value={b.status || 'Pendente'} 
@@ -166,6 +180,16 @@ const SavedBudgets = ({ setCurrentPage, handleEditBudget, db, DADOS_DA_EMPRESA, 
                     </div>
                 )}
             </div>
+
+            {/* NOVO: Renderiza o componente Modal no final */}
+            <Modal
+                isOpen={modalState.isOpen}
+                onClose={closeModal}
+                onConfirm={modalState.onConfirm}
+                title={modalState.title}
+            >
+                <p>{modalState.message}</p>
+            </Modal>
         </main>
     );
 };
