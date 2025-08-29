@@ -57,23 +57,32 @@ body {
     text-align: center;
 }
 
+/* ===== BLOCO NOVO E APRIMORADO ===== */
 .home-buttons {
     margin-top: 2rem;
     display: flex;
-    flex-direction: column;
-    align-items: center;
+    flex-direction: column; /* Padrão para mobile: uma coluna */
     gap: 1rem;
     width: 100%;
-    max-width: 320px;
+    max-width: 400px; /* Um pouco mais de espaço */
 }
 
+/* Regra para os botões dentro do container da home */
+.home-buttons .btn {
+    width: 100%; /* Força os botões a terem a largura total do container */
+    justify-content: center; /* Garante que o ícone e texto fiquem centralizados */
+}
+
+/* Regra para telas maiores (desktop) */
 @media (min-width: 640px) {
     .home-buttons {
-        flex-direction: row;
-        justify-content: center;
+        flex-direction: row; /* Volta a ser lado a lado */
         max-width: 500px;
     }
 }
+
+.btn-secondary { background-color: #6b7280; } 
+.btn-secondary:hover { background-color: #4b5563; }
 
 .main-content {
     display: flex;
@@ -195,41 +204,50 @@ body {
     }
 }
 
+/* ===== ESTILOS APRIMORADOS PARA TABELAS ===== */
 .table-container {
     margin-top: 1.5rem;
-    overflow-x: auto;
+    overflow-x: auto; /* A MÁGICA PARA O MOBILE ACONTECE AQUI! */
+    border: 1px solid #e5e7eb;
+    border-radius: 0.75rem; /* Bordas arredondadas no container */
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.05); /* Sombra sutil */
 }
 
 table {
     width: 100%;
     border-collapse: collapse;
+    min-width: 600px; /* Largura mínima para forçar o scroll em telas pequenas */
 }
 
 th, td {
-    padding: 0.75rem;
+    padding: 0.85rem 1rem; /* Aumenta um pouco o espaçamento */
     border-bottom: 1px solid #e5e7eb;
     text-align: left;
     vertical-align: middle;
+    white-space: nowrap; /* Impede que o texto quebre em várias linhas */
 }
 
-thead { background-color: #f9fafb; }
+/* Remove a borda da última linha para um visual mais limpo */
+tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* Estilo do cabeçalho */
+thead {
+    background-color: #f9fafb;
+}
 
 th {
     font-size: 0.75rem;
     font-weight: 600;
     color: #6b7280;
     text-transform: uppercase;
+    letter-spacing: 0.05em; /* Leve espaçamento entre as letras */
 }
 
-.th-name, .td-name { width: 25%; }
-.th-value, .td-value { text-align: right; }
-.th-actions { text-align: center; }
-
-.actions {
-    display: flex;
-    gap: 1rem;
-    justify-content: center;
-    align-items: center;
+/* "Zebra Striping": alterna a cor de fundo das linhas para facilitar a leitura */
+tbody tr:nth-of-type(even) {
+    background-color: #f9fafb;
 }
 
 /* Botões de ícone para as tabelas */
@@ -324,4 +342,105 @@ th {
 
 .icon-button.delete:hover {
     color: #dc2626; /* Cor vermelha específica para o ícone de lixeira */
+}
+
+/* ===== ESTILOS PARA STATUS DO ORÇAMENTO ===== */
+.status-select {
+    padding: 0.3rem 0.5rem;
+    border-radius: 0.5rem;
+    border: 1px solid transparent;
+    font-weight: 600;
+    font-size: 0.8rem;
+    -webkit-appearance: none; /* Remove a seta padrão em alguns navegadores */
+    -moz-appearance: none;
+    appearance: none;
+    background-position: right 0.5rem center;
+    background-repeat: no-repeat;
+    background-size: 1em;
+    padding-right: 1.8rem; /* Espaço para a nova seta */
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpath d='m6 9 6 6 6-6'/%3e%3c/svg%3e");
+}
+
+.status-Pendente {
+    background-color: #feefc7;
+    color: #9f580a;
+}
+
+.status-Aprovado {
+    background-color: #c8f7d8;
+    color: #1a6435;
+}
+
+.status-Recusado, .status-Concluído {
+    background-color: #e5e7eb;
+    color: #4b5563;
+}
+
+.status-Em-Produção {
+    background-color: #dbeafe;
+    color: #1e40af;
+}
+
+/* ===== ESTILOS PARA O SELETOR VISUAL DE FITA DE BORDA ===== */
+.piece-visual-selector {
+    display: grid;
+    grid-template-columns: 20px 60px 20px; /* Lado Esquerdo | Centro | Lado Direito */
+    grid-template-rows: 20px 60px 20px;    /* Borda Superior | Centro | Borda Inferior */
+    width: 100px;
+    height: 100px;
+    margin: 1rem auto; /* Centraliza o seletor */
+    border: 1px solid #ccc;
+    position: relative;
+    cursor: pointer; /* Indica que é clicável */
+    box-shadow: 0 0 5px rgba(0,0,0,0.1);
+}
+
+.piece-center {
+    grid-column: 2 / 3;
+    grid-row: 2 / 3;
+    background-color: #f9f9f9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    color: #888;
+    text-align: center;
+    border: 1px dashed #eee; /* Linhas pontilhadas no centro */
+}
+
+.edge-segment {
+    background-color: #e0e0e0; /* Cor padrão da borda inativa */
+    border: 1px solid #ccc;
+    transition: background-color 0.2s ease-in-out;
+    cursor: pointer;
+}
+
+.edge-segment:hover {
+    background-color: #c0c0c0; /* Escurece um pouco ao passar o mouse */
+}
+
+.edge-segment.active {
+    background-color: #2563eb; /* Azul para borda ativa */
+    border-color: #1d4ed8;
+}
+
+/* Posicionamento dos segmentos de borda no grid */
+.edge-segment.top {
+    grid-column: 2 / 3;
+    grid-row: 1 / 2;
+}
+
+.edge-segment.bottom {
+    grid-column: 2 / 3;
+    grid-row: 3 / 4;
+}
+
+.edge-segment.left {
+    grid-column: 1 / 2;
+    grid-row: 2 / 3;
+}
+
+.edge-segment.right {
+    grid-column: 3 / 4;
+    grid-row: 2 / 3;
 }

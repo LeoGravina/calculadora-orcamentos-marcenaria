@@ -1,13 +1,55 @@
+// ARQUIVO COMPLETO E CORRIGIDO: src/utils/pdfGenerator.js
+
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { formatCurrency } from './helpers'; // Usando nossa função de helper
+import { formatCurrency } from './helpers';
+
+// --- FUNÇÃO AUXILIAR PARA DESENHAR CAIXAS COM RÓTULOS ---
+const drawLabeledBox = (doc, label, value, x, y, boxWidth, boxHeight, options = {}) => {
+    const {
+        labelFontSize = 7,
+        valueFontSize = 10,
+        align = 'left',
+        isBold = false
+    } = options;
+
+    const labelColor = '#888888';
+    const valueColor = '#000000';
+    const borderColor = '#CCCCCC';
+
+    doc.setDrawColor(borderColor);
+    doc.rect(x, y, boxWidth, boxHeight);
+
+    doc.setFontSize(labelFontSize);
+    doc.setTextColor(labelColor);
+    doc.text(label, x + 2, y + 4);
+
+    doc.setFontSize(valueFontSize);
+    doc.setTextColor(valueColor);
+    doc.setFont('helvetica', isBold ? 'bold' : 'normal');
+
+    // Lógica de quebra de linha para o valor
+    const splitValue = doc.splitTextToSize(String(value), boxWidth - 4);
+    
+    let textX;
+    if (align === 'right') {
+        textX = x + boxWidth - 2;
+    } else if (align === 'center') {
+        textX = x + boxWidth / 2;
+    } else {
+        textX = x + 2;
+    }
+    
+    doc.text(splitValue, textX, y + 10, { align });
+};
+
 
 const generateBudgetPdf = (budget, companyInfo, companyLogo) => {
     const doc = new jsPDF('p', 'mm', 'a4');
     const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 15;
-    let cursorY = 20;
+    const margin = 10;
+    let cursorY = 15;
+    const contentWidth = pageWidth - (margin * 2);
 
     // --- SEÇÃO 1: CABEÇALHO ---
     doc.addImage(companyLogo, 'PNG', margin, cursorY, 35, 35);
@@ -21,52 +63,46 @@ const generateBudgetPdf = (budget, companyInfo, companyLogo) => {
     doc.text(companyInfo.companyCityStateZip, pageWidth - margin, cursorY + 21, { align: 'right' });
     doc.text(`Contato: ${companyInfo.companyPhone}`, pageWidth - margin, cursorY + 26, { align: 'right' });
     doc.text(`Email: ${companyInfo.companyEmail}`, pageWidth - margin, cursorY + 31, { align: 'right' });
-    cursorY += 45;
+    cursorY += 40;
 
-    // --- SEÇÃO 2: DADOS DO ORÇAMENTO (Nº, Data, Validade) ---
+    // --- SEÇÃO 2: DADOS DO ORÇAMENTO (em caixas) ---
     const budgetDate = new Date(budget.createdAt);
     const validUntilDate = new Date(budgetDate);
     validUntilDate.setDate(budgetDate.getDate() + 15);
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`ORÇAMENTO Nº ${budget.budgetId}`, margin, cursorY);
-    doc.text(`EMITIDO EM: ${budgetDate.toLocaleDateString('pt-BR')}`, pageWidth / 2, cursorY, { align: 'center' });
-    doc.text(`VÁLIDO ATÉ: ${validUntilDate.toLocaleDateString('pt-BR')}`, pageWidth - margin, cursorY, { align: 'right' });
-    cursorY += 4;
-    doc.setLineWidth(0.2);
-    doc.line(margin, cursorY, pageWidth - margin, cursorY);
-    cursorY += 10;
+    const boxWidthThird = contentWidth / 3 - 2;
+    
+    drawLabeledBox(doc, 'ORÇAMENTO Nº', budget.budgetId, margin, cursorY, boxWidthThird, 15);
+    drawLabeledBox(doc, 'EMITIDO EM', budgetDate.toLocaleDateString('pt-BR'), margin + boxWidthThird + 3, cursorY, boxWidthThird, 15);
+    drawLabeledBox(doc, 'VÁLIDO ATÉ', validUntilDate.toLocaleDateString('pt-BR'), margin + (boxWidthThird * 2) + 6, cursorY, boxWidthThird, 15);
+    cursorY += 20;
 
-    // --- SEÇÃO 3: DADOS DO CLIENTE ---
-    doc.setFillColor(245, 245, 245);
-    doc.rect(margin, cursorY, pageWidth - (margin * 2), 8, 'F');
+    // --- SEÇÃO 3: DADOS DO CLIENTE (em caixas) ---
+    doc.setFillColor('#F2F2F2');
+    doc.rect(margin, cursorY, contentWidth, 7, 'F');
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(50, 50, 50);
-    doc.text('DADOS DO CLIENTE', margin + 2, cursorY + 5.5);
-    cursorY += 14;
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(0, 0, 0);
-    doc.text(`CLIENTE: ${budget.clientName || 'Não informado'}`, margin, cursorY);
-    doc.text(`TELEFONE: ${budget.clientPhone || 'Não informado'}`, pageWidth / 2, cursorY);
-    cursorY += 6;
-    doc.text(`PROJETO: ${budget.projectName || 'Não informado'}`, margin, cursorY);
-    cursorY += 12;
+    doc.setTextColor('#333333');
+    doc.text('DADOS DO CLIENTE', margin + 2, cursorY + 5);
+    cursorY += 7;
+    const boxWidthHalf = contentWidth / 2 - 1.5;
+    drawLabeledBox(doc, 'CLIENTE', budget.clientName, margin, cursorY, contentWidth, 15);
+    cursorY += 15;
+    drawLabeledBox(doc, 'TELEFONE', budget.clientPhone, margin, cursorY, boxWidthHalf, 15);
+    drawLabeledBox(doc, 'PROJETO', budget.projectName, margin + boxWidthHalf + 3, cursorY, boxWidthHalf, 15);
+    cursorY += 20;
 
     // --- SEÇÃO 4: TABELA DE ITENS ---
-    doc.setFillColor(245, 245, 245);
-    doc.rect(margin, cursorY, pageWidth - (margin * 2), 8, 'F');
+    doc.setFillColor('#F2F2F2');
+    doc.rect(margin, cursorY, contentWidth, 7, 'F');
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(50, 50, 50);
-    doc.text('ORÇAMENTO', margin + 2, cursorY + 5.5);
-    cursorY += 8;
-
+    doc.setTextColor('#333333');
+    doc.text('ORÇAMENTO', margin + 2, cursorY + 5);
+    cursorY += 7;
+    
     const tableHead = [['ITEM', 'PRODUTO/SERVIÇO', 'QTD.', 'VALOR UNIT.', 'SUB-TOTAL']];
     const tableBody = [];
     let itemCounter = 1;
-
     budget.pieces.forEach(p => { tableBody.push([ String(itemCounter++).padStart(2, '0'), `${p.name} (${p.length}x${p.width}mm)`, p.qty, formatCurrency(p.totalCost / p.qty), formatCurrency(p.totalCost) ]); });
     budget.hardware.forEach(h => { tableBody.push([ String(itemCounter++).padStart(2, '0'), h.name, h.usedQty, formatCurrency(h.totalCost / h.usedQty), formatCurrency(h.totalCost) ]); });
     budget.borderTapes.forEach(t => { tableBody.push([ String(itemCounter++).padStart(2, '0'), `${t.name} (${t.usedLength}m)`, 1, formatCurrency(t.totalCost), formatCurrency(t.totalCost) ]); });
@@ -76,78 +112,59 @@ const generateBudgetPdf = (budget, companyInfo, companyLogo) => {
         body: tableBody,
         startY: cursorY,
         theme: 'grid',
-        styles: { fontSize: 8, cellPadding: 2 },
-        headStyles: { fillColor: [51, 51, 51], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
-        columnStyles: {
-            0: { halign: 'center', cellWidth: 15 },
-            2: { halign: 'center' },
-            3: { halign: 'right' },
-            4: { halign: 'right' },
-        },
+        styles: { fontSize: 8, cellPadding: 2, lineColor: '#CCCCCC', lineWidth: 0.1, },
+        headStyles: { fillColor: '#F2F2F2', textColor: '#333333', fontStyle: 'bold', halign: 'center', lineColor: '#CCCCCC' },
+        columnStyles: { 0: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'right' }, 4: { halign: 'right' }},
+        margin: { left: margin, right: margin }
     });
+    
+    let finalY = doc.lastAutoTable.finalY + 5;
+    
+    // --- SEÇÃO 5: TOTAIS (em caixas) ---
+    drawLabeledBox(doc, 'SUB-TOTAL GERAL', formatCurrency(budget.subtotal + budget.finalHelperCost + budget.finalDeliveryFee), margin, finalY, boxWidthThird, 15, { align: 'right' });
+    drawLabeledBox(doc, 'DESCONTO', formatCurrency(0), margin + boxWidthThird + 3, finalY, boxWidthThird, 15, { align: 'right' });
+    drawLabeledBox(doc, 'TOTAL GERAL', formatCurrency(budget.grandTotal), margin + (boxWidthThird * 2) + 6, finalY, boxWidthThird, 15, { align: 'right', isBold: true });
+    finalY += 20;
 
-    let finalY = doc.lastAutoTable.finalY;
+    // --- SEÇÃO 6: OBSERVAÇÕES E QR CODE ---
+    const obsText = `${budget.description || ''}`;
+    const qrCodeWidth = 40;
+    const obsWidth = contentWidth - qrCodeWidth - 3;
+    drawLabeledBox(doc, 'OBSERVAÇÕES', obsText, margin, finalY, obsWidth, 40, { valueFontSize: 8 });
+    
+    // --- BLOCO CORRIGIDO ---
 
-    // MELHORIA: Verifica se o conteúdo restante cabe na página, se não, adiciona uma nova.
-    const remainingSpace = pageHeight - finalY;
-    if (remainingSpace < 80) { // Se tiver menos de 8cm sobrando, vira a página
-        doc.addPage();
-        finalY = margin; // Reseta a posição inicial para a margem da nova página
+    const qrX = margin + obsWidth + 3;
+
+    // 1. Desenha a borda da caixa PRIMEIRO, para que ela sempre apareça.
+    doc.setDrawColor('#CCCCCC');
+    doc.rect(qrX, finalY, qrCodeWidth, 40);
+
+    // 2. Depois, preenche a caixa com o conteúdo.
+    if (budget.qrCodeImage) {
+        // Se a imagem existe, desenha a imagem e a legenda.
+        doc.addImage(budget.qrCodeImage, 'PNG', qrX + 5, finalY + 5, 30, 30);
+        doc.setFontSize(7);
+        doc.setTextColor('#888888');
+        doc.text('Contato via WhatsApp', qrX + qrCodeWidth / 2, finalY + 38, { align: 'center' });
+    } else {
+        // Se não existe, desenha o texto de placeholder.
+        doc.setFontSize(7);
+        doc.setTextColor('#888888');
+        const qrCodeText = 'Aponte a câmera para contato via WhatsApp';
+        const splitQrText = doc.splitTextToSize(qrCodeText, qrCodeWidth - 4);
+        doc.text(splitQrText, qrX + qrCodeWidth / 2, finalY + 33, { align: 'center' });
     }
 
-    // --- SEÇÃO 5: TOTAIS ---
-    const totalsX = pageWidth - margin - 80;
-    const valueX = pageWidth - margin;
-    let totalsY = finalY + 10;
-
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-
-    // MELHORIA: Detalhando os custos
-    doc.text('Sub-total (Materiais):', totalsX, totalsY, { align: 'right' });
-    doc.text(formatCurrency(budget.subtotal), valueX, totalsY, { align: 'right' });
-    totalsY += 5;
-    doc.text('Custo Ajudante:', totalsX, totalsY, { align: 'right' });
-    doc.text(formatCurrency(budget.finalHelperCost), valueX, totalsY, { align: 'right' });
-    totalsY += 5;
-    doc.text('Frete:', totalsX, totalsY, { align: 'right' });
-    doc.text(formatCurrency(budget.finalDeliveryFee), valueX, totalsY, { align: 'right' });
-    totalsY += 5;
-
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'bold');
-    doc.text('TOTAL GERAL:', totalsX, totalsY + 4, { align: 'right' });
-    doc.text(formatCurrency(budget.grandTotal), valueX, totalsY + 4, { align: 'right' });
-
-    cursorY = totalsY + 15;
-
-    // --- SEÇÃO 6: OBSERVAÇÕES ---
-    doc.setFillColor(245, 245, 245);
-    doc.rect(margin, cursorY, pageWidth - (margin * 2), 8, 'F');
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(50, 50, 50);
-    doc.text('OBSERVAÇÕES', margin + 2, cursorY + 5.5);
-    cursorY += 8;
-
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(0, 0, 0);
-    doc.rect(margin, cursorY, pageWidth - (margin * 2), 30, 'S');
-    cursorY += 5;
-
-    const obsText = `Forma de Pagamento: A combinar.\n${budget.description || ''}`;
-    const splitDescription = doc.splitTextToSize(obsText, pageWidth - (margin * 2) - 4);
-    doc.text(splitDescription, margin + 2, cursorY);
-
-    // --- SEÇÃO 7: RODAPÉ E ASSINATURAS ---
-    const signatureY = pageHeight - 30;
-    doc.setLineWidth(0.5);
-    doc.line(margin, signatureY, margin + 70, signatureY);
-    doc.text(companyInfo.companyName, margin + 35, signatureY + 5, { align: 'center' });
-    doc.line(pageWidth - margin - 70, signatureY, pageWidth - margin, signatureY);
-    doc.text(budget.clientName, pageWidth - margin - 35, signatureY + 5, { align: 'center' });
-
+    // --- SEÇÃO 7: ASSINATURAS ---
+    const signatureY = doc.internal.pageSize.getHeight() - 25;
+    doc.setDrawColor('#CCCCCC');
+    doc.line(margin, signatureY, margin + 80, signatureY);
+    doc.text(companyInfo.companyName, margin + 40, signatureY + 5, { align: 'center' });
+    
+    doc.line(pageWidth - margin - 80, signatureY, pageWidth - margin, signatureY);
+    doc.text(budget.clientName, pageWidth - margin - 40, signatureY + 5, { align: 'center' });
+    
     // --- SALVAR O ARQUIVO ---
     doc.save(`Orcamento_${budget.budgetId}_${budget.clientName.replace(/\s/g, '-')}.pdf`);
 };

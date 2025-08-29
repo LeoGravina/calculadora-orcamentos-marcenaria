@@ -36,9 +36,9 @@ const db = getFirestore(app);
 // --- DADOS FIXOS DA EMPRESA ---
 const DADOS_DA_EMPRESA = {
     companyName: 'MVMóveis',
-    companyCnpj: 'XX.XXX.XXX/0001-XX',
-    companyEmail: 'mvmoveis@gmail.com',
-    companyPhone: '(32) 99173-3610',
+    companyCnpj: '49.482.982/0001-94',
+    companyEmail: 'vmlrepresentacoesltda@yahoo.com.br',
+    companyPhone: '(32) 9173-3610',
     companyAddress: 'Rua Gumercino Campos,n° 121',
     companyCityStateZip: 'Ubá, MG - 36.501-272'
 };

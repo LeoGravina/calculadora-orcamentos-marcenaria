@@ -1,12 +1,13 @@
-// ARQUIVO COMPLETO PARA: src/components/BudgetCalculator.js
+// ARQUIVO COMPLETO, FINAL E CORRIGIDO: src/components/BudgetCalculator.js
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { doc, getDoc, runTransaction, addDoc, updateDoc, collection } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, runTransaction, addDoc, updateDoc, collection } from 'firebase/firestore';
 import { IMaskInput } from 'react-imask';
 import toast from 'react-hot-toast';
 import { EditIcon, TrashIcon } from './icons';
 import { getImageBase64, formatCurrency } from '../utils/helpers';
 import generateBudgetPdf from '../utils/pdfGenerator';
+import { qrCodeBase64 } from '../utils/qrCodeImage';
 
 const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db, DADOS_DA_EMPRESA, logoDaEmpresa }) => {
     const [editingId, setEditingId] = useState(null);
@@ -21,11 +22,54 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
     const [sheets, setSheets] = useState([{ id: 'default-sheet', name: 'Chapa Padrão', price: 350, length: 2750, width: 1850 }]);
     const [sheetForm, setSheetForm] = useState({ id: null, name: '', price: '', length: '', width: '' });
     const [pieces, setPieces] = useState([]);
+    
+    const initialPieceForm = { id: null, name: '', length: '', width: '', qty: 1, sheetId: 'default-sheet', bandL1: false, bandW1: false, bandL2: false, bandW2: false };
+    const [pieceForm, setPieceForm] = useState(initialPieceForm);
+
     const [hardware, setHardware] = useState([]);
-    const [borderTapes, setBorderTapes] = useState([]);
-    const [pieceForm, setPieceForm] = useState({ id: null, name: '', length: '', width: '', qty: 1, sheetId: 'default-sheet' });
     const [hardwareForm, setHardwareForm] = useState({ id: null, name: '', boxQty: '', boxPrice: '', usedQty: '' });
-    const [borderTapeForm, setBorderTapeForm] = useState({ id: null, name: '', rollPrice: '', rollLength: '', usedLength: '' });
+    
+    const [borderTapes, setBorderTapes] = useState([{ id: 'default-tape', name: 'Fita Padrão 22mm', rollPrice: 75, rollLength: 50, usedLength: 0 }]);
+    
+    const totals = useMemo(() => {
+        const margin = 1 + (parseFloat(profitMargin) || 0) / 100;
+        
+        const totalPiecesCost = pieces.reduce((acc, p) => { const s = sheets.find(s => s.id === p.sheetId); if (!s) return acc; const sArea = (s.length||1)*(s.width||1); const ppsmm = sArea>0?(s.price||0)/sArea:0; const pArea = (p.length||0)*(p.width||0); const final = pArea*ppsmm*(p.qty||0)*margin; p.totalCost=final; return acc+final; }, 0);
+        
+        const totalHardwareCost = hardware.reduce((acc, i) => { const uPrice = (i.boxPrice||0)/(i.boxQty||1); const final = uPrice*(i.usedQty||0)*margin; i.totalCost=final; return acc+final; }, 0);
+
+        const totalTapeNeededInMm = pieces.reduce((acc, p) => {
+            let piecePerimeter = 0;
+            if (p.bandL1) piecePerimeter += parseFloat(p.length || 0);
+            if (p.bandL2) piecePerimeter += parseFloat(p.length || 0);
+            if (p.bandW1) piecePerimeter += parseFloat(p.width || 0);
+            if (p.bandW2) piecePerimeter += parseFloat(p.width || 0);
+            return acc + (piecePerimeter * (p.qty || 1));
+        }, 0);
+        const totalTapeNeededInMeters = totalTapeNeededInMm / 1000;
+
+        const tapeInfo = borderTapes[0] || {};
+        const pricePerMeter = (tapeInfo.rollPrice || 0) / (tapeInfo.rollLength || 1);
+        const totalBorderTapeCost = totalTapeNeededInMeters * pricePerMeter;
+        if(tapeInfo) tapeInfo.totalCost = totalBorderTapeCost;
+
+        const subtotal = totalPiecesCost + totalHardwareCost + totalBorderTapeCost;
+        const finalHelperCost = parseFloat(helperCost) || 0;
+        const finalDeliveryFee = parseFloat(deliveryFee) || 0;
+        const grandTotal = subtotal + finalHelperCost + finalDeliveryFee;
+        
+        return { totalPiecesCost, totalHardwareCost, totalBorderTapeCost, grandTotal, subtotal, finalDeliveryFee, finalHelperCost, totalTapeNeededInMeters };
+    }, [pieces, hardware, profitMargin, deliveryFee, helperCost, borderTapes]);
+    
+    useEffect(() => {
+        const formattedTotalMeters = totals.totalTapeNeededInMeters.toFixed(2);
+        if (borderTapes[0]?.usedLength !== formattedTotalMeters) {
+            setBorderTapes(prev => [{
+                ...prev[0],
+                usedLength: formattedTotalMeters
+            }]);
+        }
+    }, [totals.totalTapeNeededInMeters, borderTapes]);
 
     const fetchAndSetNextBudgetId = useCallback(async () => {
         const counterRef = doc(db, "counters", "budgets");
@@ -33,23 +77,12 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
             const counterSnap = await getDoc(counterRef);
             const nextId = (counterSnap.data()?.lastId || 0) + 1;
             setBudgetId(String(nextId).padStart(3, '0'));
-        } catch (error) {
-            console.error("Erro ao buscar ID:", error);
-            setBudgetId('N/A');
-        }
+        } catch (error) { console.error("Erro ao buscar ID:", error); setBudgetId('N/A'); }
     }, [db]);
-
-    useEffect(() => {
-        if (!editingId) {
-            fetchAndSetNextBudgetId();
-        } else {
-            setBudgetId(budgetToEdit.budgetId || '');
-        }
-    }, [editingId, budgetToEdit, fetchAndSetNextBudgetId]);
-
     useEffect(() => {
         if (budgetToEdit) {
             setEditingId(budgetToEdit.id);
+            setBudgetId(budgetToEdit.budgetId || '');
             setClientName(budgetToEdit.clientName || '');
             setClientPhone(budgetToEdit.clientPhone || '');
             setProjectName(budgetToEdit.projectName || '');
@@ -60,50 +93,24 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
             setSheets(budgetToEdit.sheets || []);
             setPieces(budgetToEdit.pieces || []);
             setHardware(budgetToEdit.hardware || []);
-            setBorderTapes(budgetToEdit.borderTapes || []);
+            setBorderTapes(budgetToEdit.borderTapes || [{ id: 'default-tape', name: 'Fita Padrão 22mm', rollPrice: 75, rollLength: 50, usedLength: 0 }]);
+        } else {
+            fetchAndSetNextBudgetId();
         }
-    }, [budgetToEdit]);
-
-    const totals = useMemo(() => {
-        const margin = 1 + (parseFloat(profitMargin) || 0) / 100;
-        const totalPiecesCost = pieces.reduce((acc, p) => { const s = sheets.find(s => s.id === p.sheetId); if (!s) return acc; const sArea = (s.length||1)*(s.width||1); const ppsmm = sArea>0?(s.price||0)/sArea:0; const pArea = (p.length||0)*(p.width||0); const final = pArea*ppsmm*(p.qty||0)*margin; p.totalCost=final; return acc+final; }, 0);
-        const totalHardwareCost = hardware.reduce((acc, i) => { const uPrice = (i.boxPrice||0)/(i.boxQty||1); const final = uPrice*(i.usedQty||0)*margin; i.totalCost=final; return acc+final; }, 0);
-        const totalBorderTapeCost = borderTapes.reduce((acc, t) => { const ppm = (t.rollPrice||0)/(t.rollLength||1); const final = ppm*(t.usedLength||0); t.totalCost=final; return acc+final; }, 0);
-        const subtotal = totalPiecesCost + totalHardwareCost + totalBorderTapeCost;
-        const finalHelperCost = parseFloat(helperCost) || 0;
-        const finalDeliveryFee = parseFloat(deliveryFee) || 0;
-        const grandTotal = subtotal + finalHelperCost + finalDeliveryFee;
-        return { totalPiecesCost, totalHardwareCost, totalBorderTapeCost, grandTotal, subtotal, finalDeliveryFee, finalHelperCost };
-    }, [pieces, hardware, borderTapes, sheets, profitMargin, deliveryFee, helperCost]);
-
+    }, [budgetToEdit, fetchAndSetNextBudgetId]);
     const resetForm = useCallback(() => { 
-        setEditingId(null); 
-        setClientName('');
-        setClientPhone('');
-        setProjectName(''); 
-        setDescription(''); 
-        setProfitMargin(180); 
-        setHelperCost(''); 
-        setDeliveryFee(''); 
-        setPieces([]); 
-        setHardware([]); 
-        setBorderTapes([]); 
+        setEditingId(null); setClientName(''); setClientPhone(''); setProjectName(''); setDescription(''); setProfitMargin(180); setHelperCost(''); setDeliveryFee(''); setPieces([]); setHardware([]); setBorderTapes([{ id: 'default-tape', name: 'Fita Padrão 22mm', rollPrice: 75, rollLength: 50, usedLength: 0 }]);
         clearEditingBudget(); 
         fetchAndSetNextBudgetId();
     }, [clearEditingBudget, fetchAndSetNextBudgetId]);
-    
     const handleSaveBudget = async () => {
-        if (!clientName || !projectName) {
-            toast.error('Preencha o nome do cliente e do projeto.');
-            return;
-        }
+        if (!clientName || !projectName) { toast.error('Preencha o nome do cliente e do projeto.'); return; }
         const toastId = toast.loading(editingId ? 'Atualizando orçamento...' : 'Salvando orçamento...');
         try {
             const counterRef = doc(db, "counters", "budgets");
-            let newBudgetId;
-
+            let finalBudgetId;
             if (editingId) {
-                newBudgetId = budgetId;
+                finalBudgetId = budgetId;
             } else {
                 const newId = await runTransaction(db, async (transaction) => {
                     const counterDoc = await transaction.get(counterRef);
@@ -111,19 +118,16 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
                     transaction.set(counterRef, { lastId: newCount });
                     return newCount;
                 });
-                newBudgetId = String(newId).padStart(3, '0');
+                finalBudgetId = String(newId).padStart(3, '0');
             }
-
-            const budgetData = { budgetId: newBudgetId, clientName, clientPhone, projectName, description, profitMargin, sheets, pieces, hardware, borderTapes, createdAt: new Date().toISOString(), ...totals };
-
+            const budgetData = { budgetId: finalBudgetId, clientName, clientPhone, projectName, description, profitMargin, sheets, pieces, hardware, borderTapes, createdAt: new Date().toISOString(), status: budgetToEdit?.status || 'Pendente', ...totals };
             if (editingId) {
                 await updateDoc(doc(db, "budgets", editingId), budgetData);
                 toast.success('Orçamento atualizado com sucesso!', { id: toastId });
             } else {
                 await addDoc(collection(db, "budgets"), budgetData);
-                toast.success(`Orçamento Nº ${newBudgetId} salvo com sucesso!`, { id: toastId });
+                toast.success(`Orçamento Nº ${finalBudgetId} salvo com sucesso!`, { id: toastId });
             }
-            
             resetForm();
             setCurrentPage('saved');
         } catch (error) {
@@ -131,49 +135,42 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
             toast.error('Erro ao salvar o orçamento.', { id: toastId });
         }
     };
-
     const handleGeneratePdf = async () => {
-        if (!clientName || !projectName) {
-            toast.error('Preencha os dados do cliente e projeto para gerar o PDF.');
-            return;
-        }
+        if (!clientName || !projectName) { toast.error('Preencha os dados do cliente e projeto para gerar o PDF.'); return; }
         try {
             const logoBase64 = await getImageBase64(logoDaEmpresa);
-            const currentBudget = {
-                budgetId, clientName, clientPhone, projectName, description,
-                pieces, hardware, borderTapes,
-                createdAt: new Date().toISOString(),
-                ...totals
-            };
-            generateBudgetPdf(currentBudget, DADOS_DA_EMPRESA, logoBase64);
+            const currentBudget = { budgetId, clientName, clientPhone, projectName, description, pieces, hardware, borderTapes, createdAt: new Date().toISOString(), ...totals, qrCodeImage: qrCodeBase64 };
+            generateBudgetPdf(currentBudget, DADOS_DA_EMPRESA, logoDaEmpresa);
         } catch (error) {
             console.error("Erro ao gerar PDF ou converter a imagem:", error);
             toast.error("Não foi possível gerar o PDF. Verifique o console.");
         }
     };
-        
+    
     const handleSheetFormChange = (e) => setSheetForm(p => ({ ...p, [e.target.name]: e.target.value }));
-    const handlePieceFormChange = (e) => setPieceForm(p => ({ ...p, [e.target.name]: e.target.value }));
-    const handleHardwareFormChange = (e) => setHardwareForm(p => ({ ...p, [e.target.name]: e.target.value }));
-    const handleBorderTapeFormChange = (e) => setBorderTapeForm(p => ({ ...p, [e.target.name]: e.target.value }));
-    const handleSheetSubmit = (e) => { e.preventDefault(); setSheets(sheetForm.id ? sheets.map(s => s.id === sheetForm.id ? sheetForm : s) : [...sheets, { ...sheetForm, id: crypto.randomUUID() }]); setSheetForm({ id: null, name: '', price: '', length: '', width: '' }); };
-    const handlePieceSubmit = (e) => { e.preventDefault(); setPieces(pieceForm.id ? pieces.map(p => p.id === pieceForm.id ? pieceForm : p) : [...pieces, { ...pieceForm, id: crypto.randomUUID() }]); setPieceForm({ id: null, name: '', length: '', width: '', qty: 1, sheetId: 'default-sheet' }); };
-    const handleHardwareSubmit = (e) => { e.preventDefault(); setHardware(hardwareForm.id ? hardware.map(h => h.id === hardwareForm.id ? hardwareForm : h) : [...hardware, { ...hardwareForm, id: crypto.randomUUID() }]); setHardwareForm({ id: null, name: '', boxQty: '', boxPrice: '', usedQty: '' }); };
-    const handleBorderTapeSubmit = (e) => { e.preventDefault(); setBorderTapes(borderTapeForm.id ? borderTapes.map(t => t.id === borderTapeForm.id ? borderTapeForm : t) : [...borderTapes, { ...borderTapeForm, id: crypto.randomUUID() }]); setBorderTapeForm({ id: null, name: '', rollPrice: '', rollLength: '', usedLength: '' }); };
-    const editSheet = (s) => setSheetForm(s);
-    const deleteSheet = (id) => {
-        if (sheets.length > 1) {
-            setSheets(sheets.filter(s => s.id !== id));
-        } else {
-            toast.error('É necessário ter ao menos uma chapa.');
-        }
+    const handlePieceFormChange = (e) => {
+        const { name, value, type, checked } = e.target;
+        setPieceForm(p => ({ ...p, [name]: type === 'checkbox' ? checked : value }));
     };
+    const toggleEdgeBanding = (edge) => {
+        setPieceForm(prev => ({ ...prev, [edge]: !prev[edge] }));
+    };
+    const handleBorderTapeChange = (e) => {
+        const { name, value } = e.target;
+        setBorderTapes(prev => [{...prev[0], [name]: value }]);
+    };
+    const handleHardwareFormChange = (e) => setHardwareForm(p => ({ ...p, [e.target.name]: e.target.value }));
+
+    const handleSheetSubmit = (e) => { e.preventDefault(); setSheets(sheetForm.id ? sheets.map(s => s.id === sheetForm.id ? sheetForm : s) : [...sheets, { ...sheetForm, id: crypto.randomUUID() }]); setSheetForm({ id: null, name: '', price: '', length: '', width: '' }); };
+    const handlePieceSubmit = (e) => { e.preventDefault(); setPieces(pieceForm.id ? pieces.map(p => p.id === pieceForm.id ? pieceForm : p) : [...pieces, { ...pieceForm, id: crypto.randomUUID() }]); setPieceForm(initialPieceForm); };
+    const handleHardwareSubmit = (e) => { e.preventDefault(); setHardware(hardwareForm.id ? hardware.map(h => h.id === hardwareForm.id ? hardwareForm : h) : [...hardware, { ...hardwareForm, id: crypto.randomUUID() }]); setHardwareForm({ id: null, name: '', boxQty: '', boxPrice: '', usedQty: '' }); };
+    
+    const editSheet = (s) => setSheetForm(s);
+    const deleteSheet = (id) => { if (sheets.length > 1) { setSheets(sheets.filter(s => s.id !== id)); } else { toast.error('É necessário ter ao menos uma chapa.'); } };
     const editPiece = (p) => setPieceForm(p);
     const deletePiece = (id) => setPieces(pieces.filter(p => p.id !== id));
     const editHardware = (i) => setHardwareForm(i);
     const deleteHardware = (id) => setHardware(hardware.filter(h => h.id !== id));
-    const editBorderTape = (t) => setBorderTapeForm(t);
-    const deleteBorderTape = (id) => setBorderTapes(borderTapes.filter(t => t.id !== id));
     
     return (
         <div>
@@ -194,14 +191,7 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
                             <div className="form-group"><label>Nome do Cliente</label><input type="text" value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Nome Completo do Cliente" /></div>
                             <div className="form-group">
                                 <label>Contato (Telefone)</label>
-                                <IMaskInput
-                                    mask="(00)00000-0000"
-                                    value={clientPhone}
-                                    onAccept={(value) => setClientPhone(value)}
-                                    placeholder="(XX) XXXXX-XXXX"
-                                    type="tel"
-                                    className="form-input-style"
-                                />
+                                <IMaskInput mask="(00)00000-0000" value={clientPhone} onAccept={(value) => setClientPhone(value)} placeholder="(XX) XXXXX-XXXX" type="tel" className="form-input-style" />
                             </div>
                             <div className="form-group"><label>Nome do Móvel/Projeto</label><input type="text" value={projectName} onChange={(e) => setProjectName(e.target.value)} placeholder="Ex: Armário de Cozinha" /></div>
                         </div>
@@ -217,7 +207,7 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
                         <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows="3" placeholder="Detalhes sobre o acabamento, medidas especiais, etc."></textarea>
                     </div>
                 </div>
-                
+
                 <div className="card">
                     <h2 className="section-title">Chapas de Madeira</h2>
                     <form onSubmit={handleSheetSubmit}>
@@ -236,10 +226,10 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
                         </table>
                     </div>
                 </div>
-
+                
                 <div className="card">
                     <h2 className="section-title">Peças de Madeira</h2>
-                    <form onSubmit={handlePieceSubmit}>
+                    <form onSubmit={handlePieceSubmit} className="piece-form">
                         <div className="form-grid-inputs-5">
                             <div className="form-group"><label>Chapa</label><select name="sheetId" value={pieceForm.sheetId} onChange={handlePieceFormChange}>{sheets.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
                             <div className="form-group"><label>Nome da Peça</label><input type="text" name="name" value={pieceForm.name} onChange={handlePieceFormChange} placeholder="Ex: Porta" required /></div>
@@ -247,19 +237,58 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
                             <div className="form-group"><label>Larg. (mm)</label><input type="number" name="width" value={pieceForm.width} onChange={handlePieceFormChange} placeholder="Ex: 400" required /></div>
                             <div className="form-group"><label>Qtd.</label><input type="number" name="qty" value={pieceForm.qty} onChange={handlePieceFormChange} placeholder="Ex: 2" required /></div>
                         </div>
+
+                        <div className="edge-banding-selector">
+                            <label className="subsection-title">Fita de Borda nesta Peça:</label>
+                            <div className="piece-visual-selector">
+                                <div className={`edge-segment top ${pieceForm.bandW1 ? 'active' : ''}`} onClick={() => toggleEdgeBanding('bandW1')}></div>
+                                <div className={`edge-segment left ${pieceForm.bandL1 ? 'active' : ''}`} onClick={() => toggleEdgeBanding('bandL1')}></div>
+                                <div className="piece-center"></div>
+                                <div className={`edge-segment right ${pieceForm.bandL2 ? 'active' : ''}`} onClick={() => toggleEdgeBanding('bandL2')}></div>
+                                <div className={`edge-segment bottom ${pieceForm.bandW2 ? 'active' : ''}`} onClick={() => toggleEdgeBanding('bandW2')}></div>
+                            </div>
+                        </div>
+
                         <button type="submit" className={`btn form-submit-button ${pieceForm.id ? 'btn-save' : 'btn-add'}`}>{pieceForm.id ? 'Salvar Peça' : '+ Adicionar Peça'}</button>
                     </form>
                      <div className="table-container">
                         <table>
-                            <thead><tr><th className="th-name">Peça</th><th>Medidas</th><th>Qtd</th><th className="th-value">Valor Final</th><th className="th-actions">Ações</th></tr></thead>
-                            <tbody>{pieces.map(p => (<tr key={p.id}><td className="td-name">{p.name}</td><td>{p.length}mm x {p.width}mm</td><td>{p.qty}</td><td className="td-value">{formatCurrency(p.totalCost)}</td><td className="actions"><button onClick={() => editPiece(p)} className="icon-button" title="Editar"><EditIcon /></button><button onClick={() => deletePiece(p.id)} className="icon-button delete" title="Excluir"><TrashIcon /></button></td></tr>))}</tbody>
+                            <thead><tr><th className="th-name">Peça</th><th>Medidas</th><th>Fita de Borda</th><th>Qtd</th><th className="th-value">Valor Final</th><th className="th-actions">Ações</th></tr></thead>
+                            <tbody>{pieces.map(p => (<tr key={p.id}>
+                                <td className="td-name">{p.name}</td>
+                                <td>{p.length}mm x {p.width}mm</td>
+                                <td>{[p.bandL1 && 'L1', p.bandW1 && 'W1', p.bandL2 && 'L2', p.bandW2 && 'W2'].filter(Boolean).join(', ')}</td>
+                                <td>{p.qty}</td>
+                                <td className="td-value">{formatCurrency(p.totalCost)}</td>
+                                <td className="actions"><button onClick={() => editPiece(p)} className="icon-button" title="Editar"><EditIcon /></button><button onClick={() => deletePiece(p.id)} className="icon-button delete" title="Excluir"><TrashIcon /></button></td>
+                            </tr>))}</tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div className="card">
+                    <h2 className="section-title">Fita de Borda</h2>
+                    <div className="form-grid-inputs-4">
+                        <div className="form-group"><label>Descrição</label><input type="text" name="name" value={borderTapes[0]?.name || ''} onChange={handleBorderTapeChange} placeholder="Ex: Fita Branca 22mm" required /></div>
+                        <div className="form-group"><label>Preço do Rolo (R$)</label><input type="number" step="0.01" name="rollPrice" value={borderTapes[0]?.rollPrice || ''} onChange={handleBorderTapeChange} placeholder="Ex: 75.00" required /></div>
+                        <div className="form-group"><label>Metros no Rolo</label><input type="number" step="0.1" name="rollLength" value={borderTapes[0]?.rollLength || ''} onChange={handleBorderTapeChange} placeholder="Ex: 50" required /></div>
+                        <div className="form-group"><label>Metros Usados (Automático)</label><input type="number" name="usedLength" value={borderTapes[0]?.usedLength || 0} placeholder="Calculado" readOnly disabled /></div>
+                    </div>
+                    <div className="table-container">
+                        <table>
+                            <thead><tr><th className="th-name">Descrição</th><th>Metros Usados</th><th className="th-value">Valor Final</th></tr></thead>
+                            <tbody>{borderTapes.map(t => (<tr key={t.id}>
+                                <td className="td-name">{t.name}</td>
+                                <td>{t.usedLength} m</td>
+                                <td className="td-value">{formatCurrency(t.totalCost)}</td>
+                            </tr>))}</tbody>
                         </table>
                     </div>
                 </div>
 
                 <div className="card">
                     <h2 className="section-title">Ferragens e Acessórios</h2>
-                    <form onSubmit={handleHardwareSubmit}>
+                     <form onSubmit={handleHardwareSubmit}>
                         <div className="form-grid-inputs-4">
                             <div className="form-group"><label>Item</label><input type="text" name="name" value={hardwareForm.name} onChange={handleHardwareFormChange} placeholder="Ex: Dobradiça" required /></div>
                             <div className="form-group"><label>Qtd na Caixa</label><input type="number" name="boxQty" value={hardwareForm.boxQty} onChange={handleHardwareFormChange} placeholder="Ex: 100" required /></div>
@@ -275,26 +304,7 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
                         </table>
                     </div>
                 </div>
-
-                <div className="card">
-                    <h2 className="section-title">Fita de Borda</h2>
-                    <form onSubmit={handleBorderTapeSubmit}>
-                        <div className="form-grid-inputs-4">
-                            <div className="form-group"><label>Descrição</label><input type="text" name="name" value={borderTapeForm.name} onChange={handleBorderTapeFormChange} placeholder="Ex: Fita Branca 22mm" required /></div>
-                            <div className="form-group"><label>Preço do Rolo (R$)</label><input type="number" step="0.01" name="rollPrice" value={borderTapeForm.rollPrice} onChange={handleBorderTapeFormChange} placeholder="Ex: 75.00" required /></div>
-                            <div className="form-group"><label>Metros no Rolo</label><input type="number" step="0.1" name="rollLength" value={borderTapeForm.rollLength} onChange={handleBorderTapeFormChange} placeholder="Ex: 50" required /></div>
-                            <div className="form-group"><label>Metros Usados</label><input type="number" step="0.1" name="usedLength" value={borderTapeForm.usedLength} onChange={handleBorderTapeFormChange} placeholder="Ex: 20" required /></div>
-                        </div>
-                        <button type="submit" className={`btn form-submit-button ${borderTapeForm.id ? 'btn-save' : 'btn-tertiary'}`}>{borderTapeForm.id ? 'Salvar Fita' : '+ Adicionar Fita'}</button>
-                    </form>
-                    <div className="table-container">
-                        <table>
-                            <thead><tr><th className="th-name">Descrição</th><th>Metros Usados</th><th className="th-value">Valor Final</th><th className="th-actions">Ações</th></tr></thead>
-                            <tbody>{borderTapes.map(t => (<tr key={t.id}><td className="td-name">{t.name}</td><td>{t.usedLength} m</td><td className="td-value">{formatCurrency(t.totalCost)}</td><td className="actions"><button onClick={() => editBorderTape(t)} className="icon-button" title="Editar"><EditIcon /></button><button onClick={() => deleteBorderTape(t.id)} className="icon-button delete" title="Excluir"><TrashIcon /></button></td></tr>))}</tbody>
-                        </table>
-                    </div>
-                </div>
-
+                
                 <div className="card summary-card">
                     <h2 className="section-title">Resumo e Salvamento</h2>
                     <div className="summary-details">
