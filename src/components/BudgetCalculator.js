@@ -1,7 +1,7 @@
 // ARQUIVO COMPLETO PARA: src/components/BudgetCalculator.js
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { getFirestore, doc, getDoc, runTransaction, addDoc, updateDoc, collection } from 'firebase/firestore';
+import { doc, getDoc, runTransaction, addDoc, updateDoc, collection } from 'firebase/firestore';
 import { IMaskInput } from 'react-imask';
 import toast from 'react-hot-toast';
 import { EditIcon, TrashIcon } from './icons';
