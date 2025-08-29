@@ -1,7 +1,7 @@
 // ARQUIVO COMPLETO E ATUALIZADO: src/components/BudgetCalculator.js
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { getFirestore, doc, getDoc, runTransaction, addDoc, updateDoc, collection } from 'firebase/firestore';
+import { doc, getDoc, runTransaction, addDoc, updateDoc, collection } from 'firebase/firestore';
 import { IMaskInput } from 'react-imask';
 import toast from 'react-hot-toast';
 import { EditIcon, TrashIcon } from './icons';
@@ -58,7 +58,7 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
         const grandTotal = subtotal + finalHelperCost + finalDeliveryFee - finalDiscount;
         
         return { totalPiecesCost, totalHardwareCost, totalBorderTapeCost, grandTotal, subtotal, finalDeliveryFee, finalHelperCost, totalTapeNeededInMeters, finalDiscount };
-    }, [pieces, hardware, profitMargin, deliveryFee, helperCost, borderTapes, discount]);
+    }, [pieces, hardware, profitMargin, deliveryFee, helperCost, borderTapes, discount, sheets]);
     
     useEffect(() => {
         const formattedTotalMeters = totals.totalTapeNeededInMeters.toFixed(2);
