@@ -59,7 +59,7 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
         const grandTotal = subtotal + finalHelperCost + finalDeliveryFee;
         
         return { totalPiecesCost, totalHardwareCost, totalBorderTapeCost, grandTotal, subtotal, finalDeliveryFee, finalHelperCost, totalTapeNeededInMeters };
-    }, [pieces, hardware, profitMargin, deliveryFee, helperCost, borderTapes]);
+    }, [pieces, hardware, profitMargin, deliveryFee, helperCost, borderTapes, sheets]);
     
     useEffect(() => {
         const formattedTotalMeters = totals.totalTapeNeededInMeters.toFixed(2);
