@@ -1,0 +1,327 @@
+body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: #f3f4f6;
+    color: #1f2937;
+}
+
+.app-container {
+    max-width: 900px;
+    margin: 2rem auto;
+    padding: 0 1rem;
+}
+
+.app-header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.app-header h1 {
+    font-size: 2.25rem;
+    font-weight: bold;
+    color: #111827;
+}
+
+.app-header p {
+    color: #4b5563;
+    margin-top: 0.5rem;
+}
+
+/* Logo na página inicial */
+.app-logo {
+    width: 150px;
+    height: 150px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 4px solid white;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    margin-bottom: 1.5rem;
+}
+
+/* Logo menor para os cabeçalhos internos */
+.app-logo-small {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    object-fit: cover;
+    margin: 0 auto 1rem;
+}
+
+
+.home-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 80vh;
+    text-align: center;
+}
+
+.home-buttons {
+    margin-top: 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    width: 100%;
+    max-width: 320px;
+}
+
+@media (min-width: 640px) {
+    .home-buttons {
+        flex-direction: row;
+        justify-content: center;
+        max-width: 500px;
+    }
+}
+
+.main-content {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.card {
+    background-color: white;
+    padding: 1.5rem;
+    border-radius: 1rem;
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+}
+
+.card-header-with-button {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 1rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.card-header-with-button .section-title {
+    margin: 0;
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.section-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin: 0 0 1rem 0;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.subsection-title {
+    font-size: 1.125rem;
+    font-weight: 500;
+    margin-bottom: 1rem;
+    color: #374151;
+}
+
+.btn {
+    padding: 0.75rem 1.25rem;
+    font-size: 1rem;
+    font-weight: 600;
+    color: white;
+    border: none;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.btn-small-back {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    background-color: #6b7280;
+}
+.btn-small-back:hover { background-color: #4b5563; }
+
+.btn-back { background-color: #6b7280; }
+.btn-back:hover { background-color: #4b5563; }
+
+.btn-add { background-color: #4f46e5; }
+.btn-add:hover { background-color: #4338ca; }
+
+.btn-secondary { background-color: #2563eb; }
+.btn-secondary:hover { background-color: #1d4ed8; }
+
+.btn-save { background-color: #16a34a; }
+.btn-save:hover { background-color: #15803d; }
+
+.btn-tertiary { background-color: #0d9488; }
+.btn-tertiary:hover { background-color: #0f766e; }
+
+.btn-print-open { background-color: #d97706; }
+.btn-print-open:hover { background-color: #b45309; }
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.form-group label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #4b5563;
+}
+
+.form-group input, .form-group select, .form-group textarea, .form-input-style {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem;
+    background-color: #f9fafb;
+    box-sizing: border-box;
+    font-size: 1rem;
+    font-family: inherit;
+    color: inherit;
+}
+
+.grid-2-cols {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem 2rem;
+}
+
+@media (min-width: 768px) {
+    .grid-2-cols {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+.table-container {
+    margin-top: 1.5rem;
+    overflow-x: auto;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th, td {
+    padding: 0.75rem;
+    border-bottom: 1px solid #e5e7eb;
+    text-align: left;
+    vertical-align: middle;
+}
+
+thead { background-color: #f9fafb; }
+
+th {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #6b7280;
+    text-transform: uppercase;
+}
+
+.th-name, .td-name { width: 25%; }
+.th-value, .td-value { text-align: right; }
+.th-actions { text-align: center; }
+
+.actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    align-items: center;
+}
+
+/* Botões de ícone para as tabelas */
+.btn-icon {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.25rem;
+    color: #4b5563; /* Cor neutra */
+    transition: color 0.2s;
+}
+.btn-icon:hover { color: #111827; /* Cor mais escura ao passar o mouse */ }
+.btn-icon.btn-delete:hover { color: #dc2626; /* Cor de exclusão */}
+
+.summary-details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    font-size: 1.125rem;
+}
+
+.summary-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.summary-divider {
+    margin: 0.75rem 0;
+    border: 0;
+    border-top: 1px dashed #d1d5db;
+}
+
+.grand-total {
+    font-size: 1.5rem;
+    font-weight: bold;
+}
+
+.form-grid-inputs-4, .form-grid-inputs-5 {
+    display: grid;
+    gap: 1rem;
+}
+
+@media (min-width: 768px) {
+    .form-grid-inputs-4 { grid-template-columns: repeat(4, 1fr); }
+    .form-grid-inputs-5 { grid-template-columns: repeat(5, 1fr); }
+}
+
+.form-submit-button {
+    width: auto;
+    margin-top: 1.5rem;
+}
+
+.summary-buttons {
+    display: flex;
+    flex-wrap: wrap; /* Permite que os botões quebrem a linha em telas pequenas */
+    gap: 1rem;
+    margin-top: 1.5rem;
+}
+
+.summary-buttons .btn {
+    flex: 1;
+    min-width: 150px; /* Largura mínima para os botões */
+}
+
+.notification {
+    text-align: center;
+    padding: 0.75rem;
+    border-radius: 0.5rem;
+    background-color: #d1fae5; /* Fundo verde para sucesso */
+    color: #065f46;
+    font-weight: 500;
+    border: 1px solid #065f46;
+}
+
+/* ===== ESTILO CORRETO PARA BOTÕES DE ÍCONE (VISUAL LIMPO) ===== */
+.icon-button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.25rem;
+    color: #4b5563; /* Cor padrão do ícone */
+    transition: color 0.2s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.icon-button:hover {
+    color: #111827; /* Cor do ícone ao passar o mouse */
+}
+
+.icon-button.delete:hover {
+    color: #dc2626; /* Cor vermelha específica para o ícone de lixeira */
+}

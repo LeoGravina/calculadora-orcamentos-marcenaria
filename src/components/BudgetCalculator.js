@@ -1,0 +1,319 @@
+// ARQUIVO COMPLETO PARA: src/components/BudgetCalculator.js
+
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { getFirestore, doc, getDoc, runTransaction, addDoc, updateDoc, collection } from 'firebase/firestore';
+import { IMaskInput } from 'react-imask';
+import toast from 'react-hot-toast';
+import { EditIcon, TrashIcon } from './icons';
+import { getImageBase64, formatCurrency } from '../utils/helpers';
+import generateBudgetPdf from '../utils/pdfGenerator';
+
+const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db, DADOS_DA_EMPRESA, logoDaEmpresa }) => {
+    const [editingId, setEditingId] = useState(null);
+    const [budgetId, setBudgetId] = useState('');
+    const [clientName, setClientName] = useState('');
+    const [clientPhone, setClientPhone] = useState('');
+    const [projectName, setProjectName] = useState('');
+    const [description, setDescription] = useState('');
+    const [profitMargin, setProfitMargin] = useState(180);
+    const [helperCost, setHelperCost] = useState('');
+    const [deliveryFee, setDeliveryFee] = useState('');
+    const [sheets, setSheets] = useState([{ id: 'default-sheet', name: 'Chapa Padrão', price: 350, length: 2750, width: 1850 }]);
+    const [sheetForm, setSheetForm] = useState({ id: null, name: '', price: '', length: '', width: '' });
+    const [pieces, setPieces] = useState([]);
+    const [hardware, setHardware] = useState([]);
+    const [borderTapes, setBorderTapes] = useState([]);
+    const [pieceForm, setPieceForm] = useState({ id: null, name: '', length: '', width: '', qty: 1, sheetId: 'default-sheet' });
+    const [hardwareForm, setHardwareForm] = useState({ id: null, name: '', boxQty: '', boxPrice: '', usedQty: '' });
+    const [borderTapeForm, setBorderTapeForm] = useState({ id: null, name: '', rollPrice: '', rollLength: '', usedLength: '' });
+
+    const fetchAndSetNextBudgetId = useCallback(async () => {
+        const counterRef = doc(db, "counters", "budgets");
+        try {
+            const counterSnap = await getDoc(counterRef);
+            const nextId = (counterSnap.data()?.lastId || 0) + 1;
+            setBudgetId(String(nextId).padStart(3, '0'));
+        } catch (error) {
+            console.error("Erro ao buscar ID:", error);
+            setBudgetId('N/A');
+        }
+    }, [db]);
+
+    useEffect(() => {
+        if (!editingId) {
+            fetchAndSetNextBudgetId();
+        } else {
+            setBudgetId(budgetToEdit.budgetId || '');
+        }
+    }, [editingId, budgetToEdit, fetchAndSetNextBudgetId]);
+
+    useEffect(() => {
+        if (budgetToEdit) {
+            setEditingId(budgetToEdit.id);
+            setClientName(budgetToEdit.clientName || '');
+            setClientPhone(budgetToEdit.clientPhone || '');
+            setProjectName(budgetToEdit.projectName || '');
+            setDescription(budgetToEdit.description || '');
+            setProfitMargin(budgetToEdit.profitMargin || 180);
+            setHelperCost(budgetToEdit.finalHelperCost || '');
+            setDeliveryFee(budgetToEdit.finalDeliveryFee || '');
+            setSheets(budgetToEdit.sheets || []);
+            setPieces(budgetToEdit.pieces || []);
+            setHardware(budgetToEdit.hardware || []);
+            setBorderTapes(budgetToEdit.borderTapes || []);
+        }
+    }, [budgetToEdit]);
+
+    const totals = useMemo(() => {
+        const margin = 1 + (parseFloat(profitMargin) || 0) / 100;
+        const totalPiecesCost = pieces.reduce((acc, p) => { const s = sheets.find(s => s.id === p.sheetId); if (!s) return acc; const sArea = (s.length||1)*(s.width||1); const ppsmm = sArea>0?(s.price||0)/sArea:0; const pArea = (p.length||0)*(p.width||0); const final = pArea*ppsmm*(p.qty||0)*margin; p.totalCost=final; return acc+final; }, 0);
+        const totalHardwareCost = hardware.reduce((acc, i) => { const uPrice = (i.boxPrice||0)/(i.boxQty||1); const final = uPrice*(i.usedQty||0)*margin; i.totalCost=final; return acc+final; }, 0);
+        const totalBorderTapeCost = borderTapes.reduce((acc, t) => { const ppm = (t.rollPrice||0)/(t.rollLength||1); const final = ppm*(t.usedLength||0); t.totalCost=final; return acc+final; }, 0);
+        const subtotal = totalPiecesCost + totalHardwareCost + totalBorderTapeCost;
+        const finalHelperCost = parseFloat(helperCost) || 0;
+        const finalDeliveryFee = parseFloat(deliveryFee) || 0;
+        const grandTotal = subtotal + finalHelperCost + finalDeliveryFee;
+        return { totalPiecesCost, totalHardwareCost, totalBorderTapeCost, grandTotal, subtotal, finalDeliveryFee, finalHelperCost };
+    }, [pieces, hardware, borderTapes, sheets, profitMargin, deliveryFee, helperCost]);
+
+    const resetForm = useCallback(() => { 
+        setEditingId(null); 
+        setClientName('');
+        setClientPhone('');
+        setProjectName(''); 
+        setDescription(''); 
+        setProfitMargin(180); 
+        setHelperCost(''); 
+        setDeliveryFee(''); 
+        setPieces([]); 
+        setHardware([]); 
+        setBorderTapes([]); 
+        clearEditingBudget(); 
+        fetchAndSetNextBudgetId();
+    }, [clearEditingBudget, fetchAndSetNextBudgetId]);
+    
+    const handleSaveBudget = async () => {
+        if (!clientName || !projectName) {
+            toast.error('Preencha o nome do cliente e do projeto.');
+            return;
+        }
+        const toastId = toast.loading(editingId ? 'Atualizando orçamento...' : 'Salvando orçamento...');
+        try {
+            const counterRef = doc(db, "counters", "budgets");
+            let newBudgetId;
+
+            if (editingId) {
+                newBudgetId = budgetId;
+            } else {
+                const newId = await runTransaction(db, async (transaction) => {
+                    const counterDoc = await transaction.get(counterRef);
+                    const newCount = (counterDoc.data()?.lastId || 0) + 1;
+                    transaction.set(counterRef, { lastId: newCount });
+                    return newCount;
+                });
+                newBudgetId = String(newId).padStart(3, '0');
+            }
+
+            const budgetData = { budgetId: newBudgetId, clientName, clientPhone, projectName, description, profitMargin, sheets, pieces, hardware, borderTapes, createdAt: new Date().toISOString(), ...totals };
+
+            if (editingId) {
+                await updateDoc(doc(db, "budgets", editingId), budgetData);
+                toast.success('Orçamento atualizado com sucesso!', { id: toastId });
+            } else {
+                await addDoc(collection(db, "budgets"), budgetData);
+                toast.success(`Orçamento Nº ${newBudgetId} salvo com sucesso!`, { id: toastId });
+            }
+            
+            resetForm();
+            setCurrentPage('saved');
+        } catch (error) {
+            console.error("Erro ao salvar:", error);
+            toast.error('Erro ao salvar o orçamento.', { id: toastId });
+        }
+    };
+
+    const handleGeneratePdf = async () => {
+        if (!clientName || !projectName) {
+            toast.error('Preencha os dados do cliente e projeto para gerar o PDF.');
+            return;
+        }
+        try {
+            const logoBase64 = await getImageBase64(logoDaEmpresa);
+            const currentBudget = {
+                budgetId, clientName, clientPhone, projectName, description,
+                pieces, hardware, borderTapes,
+                createdAt: new Date().toISOString(),
+                ...totals
+            };
+            generateBudgetPdf(currentBudget, DADOS_DA_EMPRESA, logoBase64);
+        } catch (error) {
+            console.error("Erro ao gerar PDF ou converter a imagem:", error);
+            toast.error("Não foi possível gerar o PDF. Verifique o console.");
+        }
+    };
+        
+    const handleSheetFormChange = (e) => setSheetForm(p => ({ ...p, [e.target.name]: e.target.value }));
+    const handlePieceFormChange = (e) => setPieceForm(p => ({ ...p, [e.target.name]: e.target.value }));
+    const handleHardwareFormChange = (e) => setHardwareForm(p => ({ ...p, [e.target.name]: e.target.value }));
+    const handleBorderTapeFormChange = (e) => setBorderTapeForm(p => ({ ...p, [e.target.name]: e.target.value }));
+    const handleSheetSubmit = (e) => { e.preventDefault(); setSheets(sheetForm.id ? sheets.map(s => s.id === sheetForm.id ? sheetForm : s) : [...sheets, { ...sheetForm, id: crypto.randomUUID() }]); setSheetForm({ id: null, name: '', price: '', length: '', width: '' }); };
+    const handlePieceSubmit = (e) => { e.preventDefault(); setPieces(pieceForm.id ? pieces.map(p => p.id === pieceForm.id ? pieceForm : p) : [...pieces, { ...pieceForm, id: crypto.randomUUID() }]); setPieceForm({ id: null, name: '', length: '', width: '', qty: 1, sheetId: 'default-sheet' }); };
+    const handleHardwareSubmit = (e) => { e.preventDefault(); setHardware(hardwareForm.id ? hardware.map(h => h.id === hardwareForm.id ? hardwareForm : h) : [...hardware, { ...hardwareForm, id: crypto.randomUUID() }]); setHardwareForm({ id: null, name: '', boxQty: '', boxPrice: '', usedQty: '' }); };
+    const handleBorderTapeSubmit = (e) => { e.preventDefault(); setBorderTapes(borderTapeForm.id ? borderTapes.map(t => t.id === borderTapeForm.id ? borderTapeForm : t) : [...borderTapes, { ...borderTapeForm, id: crypto.randomUUID() }]); setBorderTapeForm({ id: null, name: '', rollPrice: '', rollLength: '', usedLength: '' }); };
+    const editSheet = (s) => setSheetForm(s);
+    const deleteSheet = (id) => {
+        if (sheets.length > 1) {
+            setSheets(sheets.filter(s => s.id !== id));
+        } else {
+            toast.error('É necessário ter ao menos uma chapa.');
+        }
+    };
+    const editPiece = (p) => setPieceForm(p);
+    const deletePiece = (id) => setPieces(pieces.filter(p => p.id !== id));
+    const editHardware = (i) => setHardwareForm(i);
+    const deleteHardware = (id) => setHardware(hardware.filter(h => h.id !== id));
+    const editBorderTape = (t) => setBorderTapeForm(t);
+    const deleteBorderTape = (id) => setBorderTapes(borderTapes.filter(t => t.id !== id));
+    
+    return (
+        <div>
+            <header className="app-header">
+                <h1>{editingId ? `Editando Orçamento ${budgetId}` : `Novo Orçamento`}</h1>
+                <img src={logoDaEmpresa} alt="Logo da Empresa" className="app-logo-small" />
+                <p>{DADOS_DA_EMPRESA.companyName}</p>
+            </header>
+            <main className="main-content">
+                <div className="card">
+                    <div className="card-header-with-button">
+                        <h2 className="section-title">Detalhes Gerais</h2>
+                        <button onClick={() => { clearEditingBudget(); setCurrentPage('home'); }} className="btn btn-secondary btn-small-back">Voltar à Página Inicial</button>
+                    </div>
+                    <div className="grid-2-cols">
+                        <div>
+                            <h3 className="subsection-title">Projeto</h3>
+                            <div className="form-group"><label>Nome do Cliente</label><input type="text" value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Nome Completo do Cliente" /></div>
+                            <div className="form-group">
+                                <label>Contato (Telefone)</label>
+                                <IMaskInput
+                                    mask="(00)00000-0000"
+                                    value={clientPhone}
+                                    onAccept={(value) => setClientPhone(value)}
+                                    placeholder="(XX) XXXXX-XXXX"
+                                    type="tel"
+                                    className="form-input-style"
+                                />
+                            </div>
+                            <div className="form-group"><label>Nome do Móvel/Projeto</label><input type="text" value={projectName} onChange={(e) => setProjectName(e.target.value)} placeholder="Ex: Armário de Cozinha" /></div>
+                        </div>
+                        <div>
+                            <h3 className="subsection-title">Lucro e Custos Adicionais</h3>
+                            <div className="form-group"><label>Lucro sobre Materiais (%)</label><input type="number" value={profitMargin} onChange={(e) => setProfitMargin(e.target.value)} /></div>
+                            <div className="form-group"><label>Custo Ajudante (R$)</label><input type="number" step="0.01" value={helperCost} onChange={(e) => setHelperCost(e.target.value)} placeholder="Ex: 150.00" /></div>
+                            <div className="form-group"><label>Frete (R$)</label><input type="number" step="0.01" value={deliveryFee} onChange={(e) => setDeliveryFee(e.target.value)} placeholder="Ex: 50.00" /></div>
+                        </div>
+                    </div>
+                    <div className="form-group" style={{marginTop: '1rem'}}>
+                        <label>Descrição / Observações</label>
+                        <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows="3" placeholder="Detalhes sobre o acabamento, medidas especiais, etc."></textarea>
+                    </div>
+                </div>
+                
+                <div className="card">
+                    <h2 className="section-title">Chapas de Madeira</h2>
+                    <form onSubmit={handleSheetSubmit}>
+                        <div className="form-grid-inputs-4">
+                            <div className="form-group"><label>Nome da Chapa</label><input type="text" name="name" value={sheetForm.name} onChange={handleSheetFormChange} placeholder="Ex: MDF Branco 18mm" required /></div>
+                            <div className="form-group"><label>Preço (R$)</label><input type="number" name="price" value={sheetForm.price} onChange={handleSheetFormChange} placeholder="Ex: 350" required /></div>
+                            <div className="form-group"><label>Comp. (mm)</label><input type="number" name="length" value={sheetForm.length} onChange={handleSheetFormChange} placeholder="Ex: 2750" required /></div>
+                            <div className="form-group"><label>Larg. (mm)</label><input type="number" name="width" value={sheetForm.width} onChange={handleSheetFormChange} placeholder="Ex: 1850" required /></div>
+                        </div>
+                        <button type="submit" className={`btn form-submit-button ${sheetForm.id ? 'btn-save' : 'btn-add'}`}>{sheetForm.id ? 'Salvar Chapa' : '+ Adicionar Chapa'}</button>
+                    </form>
+                    <div className="table-container">
+                        <table>
+                            <thead><tr><th className="th-name">Nome</th><th>Preço</th><th>Medidas</th><th className="th-actions">Ações</th></tr></thead>
+                            <tbody>{sheets.map(s => (<tr key={s.id}><td className="td-name">{s.name}</td><td>{formatCurrency(s.price)}</td><td>{s.length}mm x {s.width}mm</td><td className="actions"><button onClick={() => editSheet(s)} className="icon-button" title="Editar"><EditIcon /></button><button onClick={() => deleteSheet(s.id)} className="icon-button delete" title="Excluir"><TrashIcon /></button></td></tr>))}</tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div className="card">
+                    <h2 className="section-title">Peças de Madeira</h2>
+                    <form onSubmit={handlePieceSubmit}>
+                        <div className="form-grid-inputs-5">
+                            <div className="form-group"><label>Chapa</label><select name="sheetId" value={pieceForm.sheetId} onChange={handlePieceFormChange}>{sheets.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+                            <div className="form-group"><label>Nome da Peça</label><input type="text" name="name" value={pieceForm.name} onChange={handlePieceFormChange} placeholder="Ex: Porta" required /></div>
+                            <div className="form-group"><label>Comp. (mm)</label><input type="number" name="length" value={pieceForm.length} onChange={handlePieceFormChange} placeholder="Ex: 700" required /></div>
+                            <div className="form-group"><label>Larg. (mm)</label><input type="number" name="width" value={pieceForm.width} onChange={handlePieceFormChange} placeholder="Ex: 400" required /></div>
+                            <div className="form-group"><label>Qtd.</label><input type="number" name="qty" value={pieceForm.qty} onChange={handlePieceFormChange} placeholder="Ex: 2" required /></div>
+                        </div>
+                        <button type="submit" className={`btn form-submit-button ${pieceForm.id ? 'btn-save' : 'btn-add'}`}>{pieceForm.id ? 'Salvar Peça' : '+ Adicionar Peça'}</button>
+                    </form>
+                     <div className="table-container">
+                        <table>
+                            <thead><tr><th className="th-name">Peça</th><th>Medidas</th><th>Qtd</th><th className="th-value">Valor Final</th><th className="th-actions">Ações</th></tr></thead>
+                            <tbody>{pieces.map(p => (<tr key={p.id}><td className="td-name">{p.name}</td><td>{p.length}mm x {p.width}mm</td><td>{p.qty}</td><td className="td-value">{formatCurrency(p.totalCost)}</td><td className="actions"><button onClick={() => editPiece(p)} className="icon-button" title="Editar"><EditIcon /></button><button onClick={() => deletePiece(p.id)} className="icon-button delete" title="Excluir"><TrashIcon /></button></td></tr>))}</tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div className="card">
+                    <h2 className="section-title">Ferragens e Acessórios</h2>
+                    <form onSubmit={handleHardwareSubmit}>
+                        <div className="form-grid-inputs-4">
+                            <div className="form-group"><label>Item</label><input type="text" name="name" value={hardwareForm.name} onChange={handleHardwareFormChange} placeholder="Ex: Dobradiça" required /></div>
+                            <div className="form-group"><label>Qtd na Caixa</label><input type="number" name="boxQty" value={hardwareForm.boxQty} onChange={handleHardwareFormChange} placeholder="Ex: 100" required /></div>
+                            <div className="form-group"><label>Preço da Caixa (R$)</label><input type="number" step="0.01" name="boxPrice" value={hardwareForm.boxPrice} onChange={handleHardwareFormChange} placeholder="Ex: 80.00" required /></div>
+                            <div className="form-group"><label>Qtd. Usada</label><input type="number" name="usedQty" value={hardwareForm.usedQty} onChange={handleHardwareFormChange} placeholder="Ex: 4" required /></div>
+                        </div>
+                        <button type="submit" className={`btn form-submit-button ${hardwareForm.id ? 'btn-save' : 'btn-secondary'}`}>{hardwareForm.id ? 'Salvar Item' : '+ Adicionar Item'}</button>
+                    </form>
+                     <div className="table-container">
+                        <table>
+                            <thead><tr><th className="th-name">Item</th><th>Qtd Usada</th><th className="th-value">Valor Final</th><th className="th-actions">Ações</th></tr></thead>
+                            <tbody>{hardware.map(i => (<tr key={i.id}><td className="td-name">{i.name}</td><td>{i.usedQty}</td><td className="td-value">{formatCurrency(i.totalCost)}</td><td className="actions"><button onClick={() => editHardware(i)} className="icon-button" title="Editar"><EditIcon /></button><button onClick={() => deleteHardware(i.id)} className="icon-button delete" title="Excluir"><TrashIcon /></button></td></tr>))}</tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div className="card">
+                    <h2 className="section-title">Fita de Borda</h2>
+                    <form onSubmit={handleBorderTapeSubmit}>
+                        <div className="form-grid-inputs-4">
+                            <div className="form-group"><label>Descrição</label><input type="text" name="name" value={borderTapeForm.name} onChange={handleBorderTapeFormChange} placeholder="Ex: Fita Branca 22mm" required /></div>
+                            <div className="form-group"><label>Preço do Rolo (R$)</label><input type="number" step="0.01" name="rollPrice" value={borderTapeForm.rollPrice} onChange={handleBorderTapeFormChange} placeholder="Ex: 75.00" required /></div>
+                            <div className="form-group"><label>Metros no Rolo</label><input type="number" step="0.1" name="rollLength" value={borderTapeForm.rollLength} onChange={handleBorderTapeFormChange} placeholder="Ex: 50" required /></div>
+                            <div className="form-group"><label>Metros Usados</label><input type="number" step="0.1" name="usedLength" value={borderTapeForm.usedLength} onChange={handleBorderTapeFormChange} placeholder="Ex: 20" required /></div>
+                        </div>
+                        <button type="submit" className={`btn form-submit-button ${borderTapeForm.id ? 'btn-save' : 'btn-tertiary'}`}>{borderTapeForm.id ? 'Salvar Fita' : '+ Adicionar Fita'}</button>
+                    </form>
+                    <div className="table-container">
+                        <table>
+                            <thead><tr><th className="th-name">Descrição</th><th>Metros Usados</th><th className="th-value">Valor Final</th><th className="th-actions">Ações</th></tr></thead>
+                            <tbody>{borderTapes.map(t => (<tr key={t.id}><td className="td-name">{t.name}</td><td>{t.usedLength} m</td><td className="td-value">{formatCurrency(t.totalCost)}</td><td className="actions"><button onClick={() => editBorderTape(t)} className="icon-button" title="Editar"><EditIcon /></button><button onClick={() => deleteBorderTape(t.id)} className="icon-button delete" title="Excluir"><TrashIcon /></button></td></tr>))}</tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div className="card summary-card">
+                    <h2 className="section-title">Resumo e Salvamento</h2>
+                    <div className="summary-details">
+                        <div className="summary-item"><span>Subtotal (Materiais):</span><span>{formatCurrency(totals.subtotal)}</span></div>
+                        <div className="summary-item"><span>Ajudante:</span><span>{formatCurrency(totals.finalHelperCost)}</span></div>
+                        <div className="summary-item"><span>Frete:</span><span>{formatCurrency(totals.finalDeliveryFee)}</span></div>
+                        <hr className="summary-divider" />
+                        <div className="summary-item grand-total"><span>VALOR TOTAL:</span><span>{formatCurrency(totals.grandTotal)}</span></div>
+                    </div>
+                    
+                    <div className="summary-buttons">
+                        <button onClick={() => { clearEditingBudget(); setCurrentPage('home'); }} className="btn btn-back">Cancelar Orçamento</button>
+                        <button onClick={handleGeneratePdf} className="btn btn-print-open">Gerar PDF</button>
+                        <button onClick={handleSaveBudget} className="btn btn-save">{editingId ? 'Atualizar Orçamento' : 'Salvar Orçamento'}</button>
+                    </div>
+                </div>
+            </main>
+        </div>
+    );
+};
+
+export default BudgetCalculator;
