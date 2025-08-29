@@ -135,12 +135,13 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
             toast.error('Erro ao salvar o orçamento.', { id: toastId });
         }
     };
+
     const handleGeneratePdf = async () => {
         if (!clientName || !projectName) { toast.error('Preencha os dados do cliente e projeto para gerar o PDF.'); return; }
         try {
-            await getImageBase64(logoDaEmpresa);
+            const logoBase64 = await getImageBase64(logoDaEmpresa);
             const currentBudget = { budgetId, clientName, clientPhone, projectName, description, pieces, hardware, borderTapes, createdAt: new Date().toISOString(), ...totals, qrCodeImage: qrCodeBase64 };
-            generateBudgetPdf(currentBudget, DADOS_DA_EMPRESA, logoDaEmpresa);
+            generateBudgetPdf(currentBudget, DADOS_DA_EMPRESA, logoBase64);
         } catch (error) {
             console.error("Erro ao gerar PDF ou converter a imagem:", error);
             toast.error("Não foi possível gerar o PDF. Verifique o console.");
