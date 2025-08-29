@@ -1,7 +1,7 @@
 // ARQUIVO COMPLETO, FINAL E CORRIGIDO: src/components/BudgetCalculator.js
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { getFirestore, doc, getDoc, runTransaction, addDoc, updateDoc, collection } from 'firebase/firestore';
+import { doc, getDoc, runTransaction, addDoc, updateDoc, collection } from 'firebase/firestore';
 import { IMaskInput } from 'react-imask';
 import toast from 'react-hot-toast';
 import { EditIcon, TrashIcon } from './icons';
@@ -138,7 +138,7 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
     const handleGeneratePdf = async () => {
         if (!clientName || !projectName) { toast.error('Preencha os dados do cliente e projeto para gerar o PDF.'); return; }
         try {
-            const logoBase64 = await getImageBase64(logoDaEmpresa);
+            await getImageBase64(logoDaEmpresa);
             const currentBudget = { budgetId, clientName, clientPhone, projectName, description, pieces, hardware, borderTapes, createdAt: new Date().toISOString(), ...totals, qrCodeImage: qrCodeBase64 };
             generateBudgetPdf(currentBudget, DADOS_DA_EMPRESA, logoDaEmpresa);
         } catch (error) {
