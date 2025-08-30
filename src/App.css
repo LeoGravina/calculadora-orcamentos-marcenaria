@@ -564,3 +564,33 @@ tbody tr:nth-of-type(even) {
     from { transform: translateY(-30px); opacity: 0; }
     to { transform: translateY(0); opacity: 1; }
 }
+
+/* ===== ESTILO PARA BOTÃO DE AÇÃO SECUNDÁRIA (SALVAR RASCUNHO) ===== */
+.btn-secondary-outline {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #ffffff; /* Cinza escuro */
+    background-color: #15bc3c; 
+    border: 1px solid #d1d5db; /* Borda cinza clara */
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-secondary-outline:hover {
+    background-color: #118c2d;/* Fundo levemente acinzentado no hover */
+    border-color: #9ca3af;
+}
+
+/* ===== ESTILOS PARA O NOVO FORMULÁRIO DE ITENS UNITÁRIOS ===== */
+.form-grid-inputs-3 {
+    display: grid;
+    gap: 1rem;
+}
+
+@media (min-width: 768px) {
+    .form-grid-inputs-3 {
+        grid-template-columns: 2fr 1fr 1fr; /* Nome do item | Valor | Qtd */
+    }
+}

@@ -1,10 +1,9 @@
-// ARQUIVO COMPLETO E CORRIGIDO: src/utils/pdfGenerator.js
+// ARQUIVO COMPLETO E ATUALIZADO: src/utils/pdfGenerator.js
 
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { formatCurrency } from './helpers';
 
-// --- FUNÇÃO AUXILIAR PARA DESENHAR CAIXAS COM RÓTULOS ---
 const drawLabeledBox = (doc, label, value, x, y, boxWidth, boxHeight, options = {}) => {
     const {
         labelFontSize = 7,
@@ -28,7 +27,6 @@ const drawLabeledBox = (doc, label, value, x, y, boxWidth, boxHeight, options = 
     doc.setTextColor(valueColor);
     doc.setFont('helvetica', isBold ? 'bold' : 'normal');
 
-    // Lógica de quebra de linha para o valor
     const splitValue = doc.splitTextToSize(String(value), boxWidth - 4);
     
     let textX;
@@ -122,7 +120,11 @@ const generateBudgetPdf = (budget, companyInfo, companyLogo) => {
     
     // --- SEÇÃO 5: TOTAIS (em caixas) ---
     drawLabeledBox(doc, 'SUB-TOTAL GERAL', formatCurrency(budget.subtotal + budget.finalHelperCost + budget.finalDeliveryFee), margin, finalY, boxWidthThird, 15, { align: 'right' });
-    drawLabeledBox(doc, 'DESCONTO', `- ${formatCurrency(budget.finalDiscount || 0)}`, margin + boxWidthThird + 3, finalY, boxWidthThird, 15, { align: 'right' });
+    
+    // CORREÇÃO: Mostra o desconto dinamicamente
+    const discountLabel = `DESCONTO (${budget.discountPercentage || 0}%)`;
+    drawLabeledBox(doc, discountLabel, `- ${formatCurrency(budget.finalDiscount || 0)}`, margin + boxWidthThird + 3, finalY, boxWidthThird, 15, { align: 'right' });
+
     drawLabeledBox(doc, 'TOTAL GERAL', formatCurrency(budget.grandTotal), margin + (boxWidthThird * 2) + 6, finalY, boxWidthThird, 15, { align: 'right', isBold: true });
     finalY += 20;
 
@@ -131,29 +133,11 @@ const generateBudgetPdf = (budget, companyInfo, companyLogo) => {
     const qrCodeWidth = 40;
     const obsWidth = contentWidth - qrCodeWidth - 3;
     drawLabeledBox(doc, 'OBSERVAÇÕES', obsText, margin, finalY, obsWidth, 40, { valueFontSize: 8 });
-    
-    // --- BLOCO CORRIGIDO ---
-
     const qrX = margin + obsWidth + 3;
-
-    // 1. Desenha a borda da caixa PRIMEIRO, para que ela sempre apareça.
     doc.setDrawColor('#CCCCCC');
     doc.rect(qrX, finalY, qrCodeWidth, 40);
-
-    // 2. Depois, preenche a caixa com o conteúdo.
     if (budget.qrCodeImage) {
-        // Se a imagem existe, desenha a imagem e a legenda.
-        doc.addImage(budget.qrCodeImage, 'PNG', qrX + 5, finalY + 5, 30, 30);
-        doc.setFontSize(7);
-        doc.setTextColor('#888888');
-        doc.text('Contato via WhatsApp', qrX + qrCodeWidth / 2, finalY + 38, { align: 'center' });
-    } else {
-        // Se não existe, desenha o texto de placeholder.
-        doc.setFontSize(7);
-        doc.setTextColor('#888888');
-        const qrCodeText = 'Aponte a câmera para contato via WhatsApp';
-        const splitQrText = doc.splitTextToSize(qrCodeText, qrCodeWidth - 4);
-        doc.text(splitQrText, qrX + qrCodeWidth / 2, finalY + 33, { align: 'center' });
+       doc.addImage(budget.qrCodeImage, 'PNG', qrX + 5, finalY + 5, 30, 30);
     }
 
     // --- SEÇÃO 7: ASSINATURAS ---

@@ -1,6 +1,8 @@
+// ARQUIVO ATUALIZADO: src/components/Modal.js
+
 import React from 'react';
 
-const Modal = ({ isOpen, onClose, onConfirm, title, children }) => {
+const Modal = ({ isOpen, onClose, onConfirm, title, children, confirmText = 'Confirmar', cancelText = 'Cancelar', confirmButtonClass = 'btn-save' }) => {
     if (!isOpen) {
         return null;
     }
@@ -17,10 +19,10 @@ const Modal = ({ isOpen, onClose, onConfirm, title, children }) => {
                 </div>
                 <div className="modal-footer">
                     <button className="btn btn-back" onClick={onClose}>
-                        Cancelar
+                        {cancelText}
                     </button>
-                    <button className="btn btn-delete-action" onClick={onConfirm}>
-                        Confirmar Exclusão
+                    <button className={`btn ${confirmButtonClass}`} onClick={onConfirm}>
+                        {confirmText}
                     </button>
                 </div>
             </div>
