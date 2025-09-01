@@ -1,21 +1,15 @@
-// ARQUIVO COMPLETO PARA: src/App.js
-
 import React, { useState } from 'react';
-
-// Importações do Firebase
 import { initializeApp } from "firebase/app";
 import { getFirestore } from 'firebase/firestore';
-
-// Importação do Provedor de Notificações
 import { Toaster } from 'react-hot-toast';
 
-// Importação dos componentes e estilos
-import HomePage from './components/HomePage';
+// Importação dos componentes
+import HomePage from './components/HomePage'; // VOLTOU A IMPORTAR
 import BudgetCalculator from './components/BudgetCalculator';
 import SavedBudgets from './components/SavedBudgets';
-import './App.css'; 
+import Commissions from './components/Commissions'; 
 
-// Importação da logo
+import './App.css'; 
 import logoDaEmpresa from './minha-logo.png';
 
 // --- CONFIGURAÇÃO SEGURA DO FIREBASE ---
@@ -75,7 +69,13 @@ export default function App() {
                     DADOS_DA_EMPRESA={DADOS_DA_EMPRESA}
                     logoDaEmpresa={logoDaEmpresa}
                 />;
+            case 'commissions':
+                return <Commissions
+                    setCurrentPage={setCurrentPage}
+                    db={db}
+                />;
             default:
+                // AGORA RENDERIZA O COMPONENTE IMPORTADO CORRETAMENTE
                 return <HomePage
                     setCurrentPage={setCurrentPage}
                     logoDaEmpresa={logoDaEmpresa}

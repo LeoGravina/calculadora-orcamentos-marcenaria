@@ -1,5 +1,5 @@
 import React from 'react';
-import { CalculatorIcon, ArchiveIcon } from './icons'; // Importa os ícones do novo arquivo
+import { CalculatorIcon, ArchiveIcon, CashIcon } from './icons'; 
 
 const HomePage = ({ setCurrentPage, logoDaEmpresa }) => {
     return (
@@ -13,6 +13,10 @@ const HomePage = ({ setCurrentPage, logoDaEmpresa }) => {
                 </button>
                 <button onClick={() => setCurrentPage('saved')} className="btn btn-secondary">
                     <ArchiveIcon /> Orçamentos Salvos
+                </button>
+                {/* BOTÃO DE COMISSÕES ATUALIZADO E NO LUGAR CERTO */}
+                <button onClick={() => setCurrentPage('commissions')} className="btn btn-tertiary">
+                    <CashIcon /> Comissões
                 </button>
             </div>
         </div>

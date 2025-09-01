@@ -89,7 +89,7 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
 
         const handler = setTimeout(() => {
             localStorage.setItem('budgetDraft', JSON.stringify(draft));
-        }, 1500);
+        }, 750);
 
         return () => { clearTimeout(handler); };
     }, [clientName, clientPhone, projectName, description, profitMargin, helperCost, deliveryFee, discountPercentage, sheets, pieces, hardware, unitItems, borderTapes, editingId]);
@@ -186,7 +186,30 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
                 });
                 finalBudgetId = String(newId).padStart(3, '0');
             }
-            const budgetData = { budgetId: finalBudgetId, clientName, clientPhone, projectName, description, profitMargin, discountPercentage, sheets, pieces, hardware, unitItems, borderTapes, createdAt: new Date().toISOString(), status: budgetToEdit?.status || 'Pendente', ...totals };
+
+            const developerCommission = totals.grandTotal * 0.01;
+
+            const budgetData = { 
+                budgetId: finalBudgetId, 
+                clientName, 
+                clientPhone, 
+                projectName, 
+                description, 
+                profitMargin, 
+                discountPercentage, 
+                sheets, 
+                pieces, 
+                hardware, 
+                unitItems, 
+                borderTapes, 
+                createdAt: new Date().toISOString(), 
+                status: budgetToEdit?.status || 'Pendente', 
+                ...totals,
+                // --- LINHAS CORRIGIDAS/ADICIONADAS ---
+                developerCommission: developerCommission, // Adiciona a comissão calculada
+                commissionStatus: budgetToEdit?.commissionStatus || 'Não Pago' // Adiciona o status do pagamento
+            };
+            
             if (editingId) {
                 await updateDoc(doc(db, "budgets", editingId), budgetData);
                 toast.success('Orçamento atualizado com sucesso!', { id: toastId });

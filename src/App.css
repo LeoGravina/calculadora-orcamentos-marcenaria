@@ -1,8 +1,14 @@
+/* ==========================================================================
+   1. GERAL, LAYOUT E TIPOGRAFIA
+   ========================================================================== */
+
 body {
     margin: 0;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background-color: #f3f4f6;
+    background-color: #f3f4f6; /* Cinza claro de fundo */
     color: #1f2937;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 .app-container {
@@ -10,6 +16,33 @@ body {
     margin: 2rem auto;
     padding: 0 1rem;
 }
+
+.main-content {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+/* Títulos */
+.section-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin: 0 0 1rem 0;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.subsection-title {
+    font-size: 1.125rem;
+    font-weight: 500;
+    margin-bottom: 1rem;
+    color: #374151;
+}
+
+
+/* ==========================================================================
+   2. CABEÇALHO E LOGO
+   ========================================================================== */
 
 .app-header {
     text-align: center;
@@ -27,7 +60,6 @@ body {
     margin-top: 0.5rem;
 }
 
-/* Logo na página inicial */
 .app-logo {
     width: 150px;
     height: 150px;
@@ -38,7 +70,6 @@ body {
     margin-bottom: 1.5rem;
 }
 
-/* Logo menor para os cabeçalhos internos */
 .app-logo-small {
     width: 80px;
     height: 80px;
@@ -47,6 +78,10 @@ body {
     margin: 0 auto 1rem;
 }
 
+
+/* ==========================================================================
+   3. PÁGINA INICIAL
+   ========================================================================== */
 
 .home-container {
     display: flex;
@@ -57,38 +92,46 @@ body {
     text-align: center;
 }
 
-/* ===== BLOCO NOVO E APRIMORADO ===== */
 .home-buttons {
-    margin-top: 2rem;
-    display: flex;
-    flex-direction: column; /* Padrão para mobile: uma coluna */
+    display: grid;
+    grid-template-columns: 1fr; /* Padrão mobile: uma coluna */
     gap: 1rem;
     width: 100%;
-    max-width: 400px; /* Um pouco mais de espaço */
+    max-width: 350px; /* Largura máxima para botões no celular */
+    margin: 2rem auto 0;
 }
 
-/* Regra para os botões dentro do container da home */
-.home-buttons .btn {
-    width: 100%; /* Força os botões a terem a largura total do container */
-    justify-content: center; /* Garante que o ícone e texto fiquem centralizados */
+/* Botão: Novo Orçamento */
+.home-buttons .btn.btn-add {
+    background-color: #f79009;
+    color: white;
+}
+.home-buttons .btn.btn-add:hover {
+    background-color: #d17807;
 }
 
-/* Regra para telas maiores (desktop) */
-@media (min-width: 640px) {
-    .home-buttons {
-        flex-direction: row; /* Volta a ser lado a lado */
-        max-width: 500px;
-    }
+/* Botão: Orçamentos Salvos */
+.home-buttons .btn.btn-secondary {
+    background-color: #374151;
+    color: white;
+}
+.home-buttons .btn.btn-secondary:hover {
+    background-color: #1f2937;
 }
 
-.btn-secondary { background-color: #6b7280; } 
-.btn-secondary:hover { background-color: #4b5563; }
-
-.main-content {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
+/* Botão: Comissões */
+.home-buttons .btn.btn-tertiary {
+    background-color: #10b981;
+    color: white;
 }
+.home-buttons .btn.btn-tertiary:hover {
+    background-color: #059669;
+}
+
+
+/* ==========================================================================
+   4. CARDS E GRIDS DE LAYOUT
+   ========================================================================== */
 
 .card {
     background-color: white;
@@ -101,6 +144,8 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
     padding-bottom: 1rem;
     margin-bottom: 1.5rem;
     border-bottom: 1px solid #e5e7eb;
@@ -112,20 +157,23 @@ body {
     padding-bottom: 0;
 }
 
-.section-title {
-    font-size: 1.5rem;
-    font-weight: 600;
-    margin: 0 0 1rem 0;
-    padding-bottom: 0.75rem;
-    border-bottom: 1px solid #e5e7eb;
+.grid-2-cols {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem 2rem;
 }
 
-.subsection-title {
-    font-size: 1.125rem;
-    font-weight: 500;
-    margin-bottom: 1rem;
-    color: #374151;
+.form-grid-inputs-3,
+.form-grid-inputs-4,
+.form-grid-inputs-5 {
+    display: grid;
+    gap: 1rem;
 }
+
+
+/* ==========================================================================
+   5. BOTÕES (Estilos Gerais e Específicos)
+   ========================================================================== */
 
 .btn {
     padding: 0.75rem 1.25rem;
@@ -140,22 +188,19 @@ body {
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
+    text-decoration: none;
 }
 
-.btn-small-back {
-    padding: 0.5rem 1rem;
-    font-size: 0.875rem;
-    background-color: #6b7280;
+.btn svg {
+    width: 20px;
+    height: 20px;
 }
-.btn-small-back:hover { background-color: #4b5563; }
 
-.btn-back { background-color: #6b7280; }
-.btn-back:hover { background-color: #4b5563; }
-
-.btn-add { background-color: #D97706; } 
+/* Variações de Botões */
+.btn-add { background-color: #D97706; }
 .btn-add:hover { background-color: #B45309; }
 
-.btn-secondary { background-color: #374151; } 
+.btn-secondary { background-color: #374151; }
 .btn-secondary:hover { background-color: #1F2937; }
 
 .btn-save { background-color: #16a34a; }
@@ -166,6 +211,37 @@ body {
 
 .btn-print-open { background-color: #d97706; }
 .btn-print-open:hover { background-color: #b45309; }
+
+.btn-back { background-color: #6b7280; }
+.btn-back:hover { background-color: #4b5563; }
+
+.btn-small-back {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    background-color: #6b7280;
+}
+.btn-small-back:hover { background-color: #4b5563; }
+
+
+/* Botões de Ícone (para tabelas) */
+.icon-button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.25rem;
+    color: #4b5563;
+    transition: color 0.2s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.icon-button:hover { color: #111827; }
+.icon-button.delete:hover { color: #dc2626; }
+
+
+/* ==========================================================================
+   6. FORMULÁRIOS E INPUTS
+   ========================================================================== */
 
 .form-group {
     display: flex;
@@ -180,7 +256,10 @@ body {
     color: #4b5563;
 }
 
-.form-group input, .form-group select, .form-group textarea, .form-input-style {
+.form-group input,
+.form-group select,
+.form-group textarea,
+.form-input-style {
     width: 100%;
     padding: 0.75rem;
     border: 1px solid #d1d5db;
@@ -192,47 +271,41 @@ body {
     color: inherit;
 }
 
-.grid-2-cols {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 1rem 2rem;
+.form-submit-button {
+    width: auto;
+    margin-top: 1.5rem;
 }
 
-@media (min-width: 768px) {
-    .grid-2-cols {
-        grid-template-columns: 1fr 1fr;
-    }
-}
 
-/* ===== ESTILOS APRIMORADOS PARA TABELAS ===== */
+/* ==========================================================================
+   7. TABELAS
+   ========================================================================== */
+
 .table-container {
     margin-top: 1.5rem;
-    overflow-x: auto; /* A MÁGICA PARA O MOBILE ACONTECE AQUI! */
+    overflow-x: auto; /* Permite rolagem horizontal em telas pequenas */
     border: 1px solid #e5e7eb;
-    border-radius: 0.75rem; /* Bordas arredondadas no container */
-    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.05); /* Sombra sutil */
+    border-radius: 0.75rem;
 }
 
 table {
     width: 100%;
     border-collapse: collapse;
-    min-width: 600px; /* Largura mínima para forçar o scroll em telas pequenas */
+    min-width: 600px; /* Força a rolagem em vez de espremer o conteúdo */
 }
 
 th, td {
-    padding: 0.85rem 1rem; /* Aumenta um pouco o espaçamento */
+    padding: 0.85rem 1rem;
     border-bottom: 1px solid #e5e7eb;
     text-align: left;
     vertical-align: middle;
-    white-space: nowrap; /* Impede que o texto quebre em várias linhas */
+    white-space: nowrap;
 }
 
-/* Remove a borda da última linha para um visual mais limpo */
 tbody tr:last-child td {
     border-bottom: none;
 }
 
-/* Estilo do cabeçalho */
 thead {
     background-color: #f9fafb;
 }
@@ -242,355 +315,122 @@ th {
     font-weight: 600;
     color: #6b7280;
     text-transform: uppercase;
-    letter-spacing: 0.05em; /* Leve espaçamento entre as letras */
+    letter-spacing: 0.05em;
 }
 
-/* "Zebra Striping": alterna a cor de fundo das linhas para facilitar a leitura */
 tbody tr:nth-of-type(even) {
     background-color: #f9fafb;
 }
 
-/* Botões de ícone para as tabelas */
-.btn-icon {
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 0.25rem;
-    color: #4b5563; /* Cor neutra */
-    transition: color 0.2s;
-}
-.btn-icon:hover { color: #111827; /* Cor mais escura ao passar o mouse */ }
-.btn-icon.btn-delete:hover { color: #dc2626; /* Cor de exclusão */}
+/* ==========================================================================
+   8. COMPONENTES ESPECÍFICOS (Status, Resumo, Seletor, Modal)
+   ========================================================================== */
 
-.summary-details {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    font-size: 1.125rem;
-}
-
-.summary-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.summary-divider {
-    margin: 0.75rem 0;
-    border: 0;
-    border-top: 1px dashed #d1d5db;
-}
-
-.grand-total {
-    font-size: 1.5rem;
-    font-weight: bold;
-}
-
-.form-grid-inputs-4, .form-grid-inputs-5 {
-    display: grid;
-    gap: 1rem;
-}
-
-@media (min-width: 768px) {
-    .form-grid-inputs-4 { grid-template-columns: repeat(4, 1fr); }
-    .form-grid-inputs-5 { grid-template-columns: repeat(5, 1fr); }
-}
-
-.form-submit-button {
-    width: auto;
-    margin-top: 1.5rem;
-}
-
-.summary-buttons {
-    display: flex;
-    flex-wrap: wrap; /* Permite que os botões quebrem a linha em telas pequenas */
-    gap: 1rem;
-    margin-top: 1.5rem;
-}
-
-.summary-buttons .btn {
-    flex: 1;
-    min-width: 150px; /* Largura mínima para os botões */
-}
-
-.notification {
-    text-align: center;
-    padding: 0.75rem;
-    border-radius: 0.5rem;
-    background-color: #d1fae5; /* Fundo verde para sucesso */
-    color: #065f46;
-    font-weight: 500;
-    border: 1px solid #065f46;
-}
-
-/* ===== ESTILO CORRETO PARA BOTÕES DE ÍCONE (VISUAL LIMPO) ===== */
-.icon-button {
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 0.25rem;
-    color: #4b5563; /* Cor padrão do ícone */
-    transition: color 0.2s;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.icon-button:hover {
-    color: #111827; /* Cor do ícone ao passar o mouse */
-}
-
-.icon-button.delete:hover {
-    color: #dc2626; /* Cor vermelha específica para o ícone de lixeira */
-}
-
-/* ===== ESTILOS PARA STATUS DO ORÇAMENTO ===== */
+/* --- Status Select --- */
 .status-select {
     padding: 0.3rem 0.5rem;
     border-radius: 0.5rem;
     border: 1px solid transparent;
     font-weight: 600;
     font-size: 0.8rem;
-    -webkit-appearance: none; /* Remove a seta padrão em alguns navegadores */
+    -webkit-appearance: none;
     -moz-appearance: none;
     appearance: none;
     background-position: right 0.5rem center;
     background-repeat: no-repeat;
     background-size: 1em;
-    padding-right: 1.8rem; /* Espaço para a nova seta */
+    padding-right: 1.8rem;
     background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpath d='m6 9 6 6 6-6'/%3e%3c/svg%3e");
 }
 
-.status-Pendente {
-    background-color: #feefc7;
-    color: #9f580a;
+.status-select:focus,
+.status-select:focus-visible {
+  outline: none;
+  border-width: 2px;
+  border-color: #f79009;
 }
 
-.status-Aprovado {
-    background-color: #c8f7d8;
-    color: #1a6435;
-}
+.status-Pendente { background-color: #feefc7; color: #9f580a; }
+.status-Aprovado { background-color: #c8f7d8; color: #1a6435; }
+.status-Concluído { background-color: #e0e7ff; color: #3730a3; }
+.status-Recusado { background-color: #fee2e2; color: #b91c1c; }
+.status-Em-Produção { background-color: #dbeafe; color: #1e40af; }
+.status-Pago { background-color: #dcfce7; border-color: #22c55e; color: #166534; }
+.status-Não-Pago { background-color: #fee2e2; border-color: #ef4444; color: #991b1b; }
 
-.status-Recusado, .status-Concluído {
-    background-color: #e5e7eb;
-    color: #4b5563;
-}
+/* --- Cartão de Resumo e Dashboard --- */
+.summary-details { display: flex; flex-direction: column; gap: 0.75rem; font-size: 1.125rem; }
+.summary-item { display: flex; justify-content: space-between; align-items: center; }
+.summary-divider { margin: 0.75rem 0; border: 0; border-top: 1px dashed #d1d5db; }
+.grand-total { font-size: 1.5rem; font-weight: bold; }
 
-.status-Em-Produção {
-    background-color: #dbeafe;
-    color: #1e40af;
-}
+.summary-buttons { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1.5rem; }
+.summary-buttons .btn { flex: 1; min-width: 150px; }
 
-/* ===== ESTILOS PARA O SELETOR VISUAL DE FITA DE BORDA ===== */
-.piece-visual-selector {
-    display: grid;
-    grid-template-columns: 20px 60px 20px; /* Lado Esquerdo | Centro | Lado Direito */
-    grid-template-rows: 20px 60px 20px;    /* Borda Superior | Centro | Borda Inferior */
-    width: 100px;
-    height: 100px;
-    margin: 1rem auto; /* Centraliza o seletor */
-    border: 1px solid #ccc;
-    position: relative;
-    cursor: pointer; /* Indica que é clicável */
-    box-shadow: 0 0 5px rgba(0,0,0,0.1);
-}
+.commission-summary { display: flex; gap: 1rem; margin-bottom: 2rem; }
+.summary-box { flex: 1; background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 1rem; text-align: center; }
+.summary-box h3 { margin-top: 0; color: #4b5563; font-size: 1rem; }
+.summary-box p { margin-bottom: 0; font-size: 1.75rem; font-weight: bold; color: #111827; }
+.commission-value { font-weight: bold; color: #059669; }
 
-.piece-center {
-    grid-column: 2 / 3;
-    grid-row: 2 / 3;
-    background-color: #f9f9f9;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.7rem;
-    color: #888;
-    text-align: center;
-    border: 1px dashed #eee; /* Linhas pontilhadas no centro */
-}
+/* --- Seletor de Fita de Borda --- */
+.piece-visual-selector { display: grid; grid-template-columns: 20px 60px 20px; grid-template-rows: 20px 60px 20px; width: 100px; height: 100px; margin: 0; border: 1px solid #ccc; position: relative; cursor: pointer; }
+.piece-center { grid-column: 2 / 3; grid-row: 2 / 3; background-color: #f9f9f9; border: 1px dashed #eee; }
+.edge-segment { background-color: #e0e0e0; border: 1px solid #ccc; transition: background-color 0.2s ease-in-out; cursor: pointer; }
+.edge-segment:hover { background-color: #c0c0c0; }
+.edge-segment.active { background-color: #2563eb; border-color: #1d4ed8; }
+.edge-segment.top { grid-column: 2 / 3; grid-row: 1 / 2; }
+.edge-segment.bottom { grid-column: 2 / 3; grid-row: 3 / 4; }
+.edge-segment.left { grid-column: 1 / 2; grid-row: 2 / 3; }
+.edge-segment.right { grid-column: 3 / 4; grid-row: 2 / 3; }
+.visual-selector-wrapper { display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-top: 1rem; }
+.dimension-label { font-size: 0.7rem; color: #6b7280; font-weight: 500; text-transform: uppercase; }
+.dimension-label.vertical { writing-mode: vertical-rl; transform: rotate(180deg); }
+.dimension-label.horizontal { display: block; text-align: center; margin-bottom: 0.5rem; }
 
-.edge-segment {
-    background-color: #e0e0e0; /* Cor padrão da borda inativa */
-    border: 1px solid #ccc;
-    transition: background-color 0.2s ease-in-out;
-    cursor: pointer;
-}
 
-.edge-segment:hover {
-    background-color: #c0c0c0; /* Escurece um pouco ao passar o mouse */
-}
+/* --- Modal --- */
+.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; animation: fadeIn 0.3s ease; }
+.modal-content { background-color: white; padding: 1.5rem; border-radius: 1rem; box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3); width: 100%; max-width: 450px; animation: slideIn 0.3s ease; margin: 1rem; }
+.modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 1rem; margin-bottom: 1rem; }
+.modal-title { margin: 0; font-size: 1.25rem; font-weight: 600; }
+.modal-close-btn { background: none; border: none; font-size: 1.8rem; font-weight: 300; line-height: 1; cursor: pointer; color: #6b7280; }
+.modal-body { margin-bottom: 1.5rem; color: #4b5563; }
+.modal-footer { display: flex; justify-content: flex-end; gap: 1rem; }
+.btn-delete-action { background-color: #dc2626; }
+.btn-delete-action:hover { background-color: #b91c1c; }
 
-.edge-segment.active {
-    background-color: #2563eb; /* Azul para borda ativa */
-    border-color: #1d4ed8;
-}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideIn { from { transform: translateY(-30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
-/* Posicionamento dos segmentos de borda no grid */
-.edge-segment.top {
-    grid-column: 2 / 3;
-    grid-row: 1 / 2;
-}
 
-.edge-segment.bottom {
-    grid-column: 2 / 3;
-    grid-row: 3 / 4;
-}
+/* ==========================================================================
+   9. RESPONSIVIDADE (MEDIA QUERIES)
+   ========================================================================== */
 
-.edge-segment.left {
-    grid-column: 1 / 2;
-    grid-row: 2 / 3;
-}
-
-.edge-segment.right {
-    grid-column: 3 / 4;
-    grid-row: 2 / 3;
-}
-
-/* ===== ESTILOS PARA ETIQUETAS DO SELETOR 2D ===== */
-.visual-selector-wrapper {
-    display: flex;
-    align-items: center;
-    justify-content: center; /* Centraliza todo o bloco */
-    gap: 0.5rem;
-    margin-top: 1rem;
-}
-
-.dimension-label {
-    font-size: 0.7rem;
-    color: #6b7280;
-    font-weight: 500;
-    text-transform: uppercase;
-}
-
-/* Etiqueta vertical para o Comprimento */
-.dimension-label.vertical {
-    writing-mode: vertical-rl; /* Gira o texto 90 graus */
-    transform: rotate(180deg); /* Ajusta a orientação da leitura */
-    padding-bottom: 1rem;
-}
-
-/* Etiqueta horizontal para a Largura */
-.dimension-label.horizontal {
-    display: block;
-    text-align: center;
-    margin-bottom: 0.5rem;
-}
-
-/* Ajuste no seletor para remover a margem que agora está no wrapper */
-.piece-visual-selector {
-    margin: 0;
-}
-
-/* ===== ESTILOS PARA O MODAL DE CONFIRMAÇÃO ===== */
-.modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: rgba(0, 0, 0, 0.6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    animation: fadeIn 0.3s ease;
-}
-
-.modal-content {
-    background-color: white;
-    padding: 1.5rem;
-    border-radius: 1rem;
-    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-    width: 100%;
-    max-width: 450px;
-    animation: slideIn 0.3s ease;
-}
-
-.modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-bottom: 1px solid #e5e7eb;
-    padding-bottom: 1rem;
-    margin-bottom: 1rem;
-}
-
-.modal-title {
-    margin: 0;
-    font-size: 1.25rem;
-    font-weight: 600;
-}
-
-.modal-close-btn {
-    background: none;
-    border: none;
-    font-size: 1.8rem;
-    font-weight: 300;
-    line-height: 1;
-    cursor: pointer;
-    color: #6b7280;
-}
-
-.modal-body {
-    margin-bottom: 1.5rem;
-    color: #4b5563;
-}
-
-.modal-footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: 1rem;
-}
-
-/* Botão de exclusão específico para o modal */
-.btn-delete-action {
-    padding: 0.75rem 1.25rem;
-    font-weight: 600;
-    color: white;
-    border: none;
-    border-radius: 0.5rem;
-    cursor: pointer;
-    background-color: #dc2626; /* Vermelho */
-}
-.btn-delete-action:hover {
-    background-color: #b91c1c;
-}
-
-/* Animações */
-@keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-@keyframes slideIn {
-    from { transform: translateY(-30px); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
-}
-
-/* ===== ESTILO PARA BOTÃO DE AÇÃO SECUNDÁRIA (SALVAR RASCUNHO) ===== */
-.btn-secondary-outline {
-    padding: 0.5rem 1rem;
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: #ffffff; /* Cinza escuro */
-    background-color: #15bc3c; 
-    border: 1px solid #d1d5db; /* Borda cinza clara */
-    border-radius: 0.5rem;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.btn-secondary-outline:hover {
-    background-color: #118c2d;/* Fundo levemente acinzentado no hover */
-    border-color: #9ca3af;
-}
-
-/* ===== ESTILOS PARA O NOVO FORMULÁRIO DE ITENS UNITÁRIOS ===== */
-.form-grid-inputs-3 {
-    display: grid;
-    gap: 1rem;
-}
-
+/* Telas de Tablet e maiores (a partir de 768px) */
 @media (min-width: 768px) {
+    /* Layout da página inicial */
+    .home-buttons {
+        grid-template-columns: 1fr 1fr; /* Duas colunas */
+        max-width: 500px;
+    }
+
+    .home-buttons .btn:nth-child(3) {
+        grid-column: 1 / -1; /* Botão de comissões ocupa as duas colunas */
+    }
+
+    /* Grids de formulário */
+    .grid-2-cols {
+        grid-template-columns: 1fr 1fr;
+    }
     .form-grid-inputs-3 {
-        grid-template-columns: 2fr 1fr 1fr; /* Nome do item | Valor | Qtd */
+        grid-template-columns: 2fr 1fr 1fr;
+    }
+    .form-grid-inputs-4 {
+        grid-template-columns: repeat(4, 1fr);
+    }
+    .form-grid-inputs-5 {
+        grid-template-columns: repeat(5, 1fr);
     }
 }
