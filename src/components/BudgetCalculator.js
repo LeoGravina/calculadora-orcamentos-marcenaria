@@ -23,7 +23,7 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
     const [hardware, setHardware] = useState([]);
     const [unitItems, setUnitItems] = useState([]);
     const [manualSheetForm, setManualSheetForm] = useState({ name: '', price: '', length: '', width: '' });
-    const initialPieceForm = { id: null, name: '', length: '', width: '', qty: 1, sheetId: '', bandL1: false, bandW1: false, bandL2: false, bandW2: false };
+    const initialPieceForm = useMemo(() => ({ name: "", price: 0, quantity: 1 }), []);
     const [pieceForm, setPieceForm] = useState(initialPieceForm);
     const [hardwareForm, setHardwareForm] = useState({ catalogId: '', usedQty: '', name: '', boxPrice: '', boxQty: '', id: null });
     const [unitItemForm, setUnitItemForm] = useState({ catalogId: '', qty: '', name: '', unitPrice: '', id: null });
@@ -39,7 +39,7 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
     const [discountPercentage, setDiscountPercentage] = useState(0);
     const [modalState, setModalState] = useState({ isOpen: false, title: '', message: '', onConfirm: () => {} });
     const [finalBudgetPrice, setFinalBudgetPrice] = useState('');
-    const [isPriceManuallySet, setIsPriceManuallySet] = useState(false);
+    const [, setIsPriceManuallySet] = useState(false);
     const fetchLock = useRef(false);
 
 
