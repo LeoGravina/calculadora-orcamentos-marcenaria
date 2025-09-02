@@ -466,10 +466,25 @@ tbody tr:nth-of-type(even) {
 @keyframes slideIn { from { transform: translateY(-30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
 /* Estilos para a navegação por abas de materiais */
+/* Estilos para a navegação por abas (reutilizável e responsivo) */
 .tabs-container {
     display: flex;
     border-bottom: 2px solid #e0e0e0;
     margin-bottom: 24px;
+    
+    /* A MÁGICA ACONTECE AQUI */
+    overflow-x: auto; /* Permite a rolagem horizontal */
+    white-space: nowrap; /* Impede que os botões quebrem a linha */
+    
+    /* Melhora a experiência de rolagem em mobile */
+    -webkit-overflow-scrolling: touch; 
+    
+    /* Esconde a barra de rolagem visualmente, mas mantém a funcionalidade */
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+}
+.tabs-container::-webkit-scrollbar {
+    display: none; /* Chrome, Safari and Opera */
 }
 
 .tab-button {
