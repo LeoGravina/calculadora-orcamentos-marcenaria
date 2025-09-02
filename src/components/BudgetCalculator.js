@@ -159,7 +159,7 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
             finalDiscountAmount: valorDoDescontoFinal, // NOVO: Valor do desconto final
             finalValue: valorFinalComDesconto // NOVO: O valor final real
         };
-    }, [pieces, hardware, unitItems, profitMargin, deliveryFee, helperCost, borderTapes, discountPercentage, finalBudgetPrice]); // Adicionado finalBudgetPrice às dependências
+    }, [pieces, hardware, unitItems, sheets, profitMargin, deliveryFee, helperCost, borderTapes, discountPercentage, finalBudgetPrice]); // Adicionado finalBudgetPrice às dependências
     
     const closeModal = () => setModalState({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
