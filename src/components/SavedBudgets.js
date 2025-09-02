@@ -3,13 +3,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { collection, getDocs, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import toast from 'react-hot-toast';
-import { EditIcon, TrashIcon, DownloadIcon } from './icons';
+import { EditIcon, TrashIcon, DownloadIcon, DuplicateIcon } from './icons';
 import { getImageBase64, formatCurrency } from '../utils/helpers';
 import generateBudgetPdf from '../utils/pdfGenerator';
 import { qrCodeBase64 } from '../utils/qrCodeImage';
 import Modal from './Modal'; // NOVO: Importa o componente Modal
 
-const SavedBudgets = ({ setCurrentPage, handleEditBudget, db, DADOS_DA_EMPRESA, logoDaEmpresa }) => {
+const SavedBudgets = ({ setCurrentPage, handleEditBudget, handleDuplicateBudget, db, DADOS_DA_EMPRESA, logoDaEmpresa }) => {
     const [budgets, setBudgets] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [loading, setLoading] = useState(true);
@@ -163,8 +163,9 @@ const SavedBudgets = ({ setCurrentPage, handleEditBudget, db, DADOS_DA_EMPRESA, 
                                         </td>
                                         <td className="td-value">{formatCurrency(b.grandTotal || 0)}</td>
                                         <td className="actions">
-                                            <button onClick={() => handleDownloadPdf(b)} className="icon-button" title="Baixar PDF"><DownloadIcon /></button>
-                                            <button onClick={() => handleEditBudget(b)} className="icon-button" title="Editar"><EditIcon /></button>
+                                            <button onClick={() => handleDownloadPdf(b)} className="icon-button download" title="Baixar PDF"><DownloadIcon /></button>
+                                            <button onClick={() => handleDuplicateBudget(b)} className="icon-button duplicate" title="Duplicar"><DuplicateIcon /></button>
+                                            <button onClick={() => handleEditBudget(b)} className="icon-button edit" title="Editar"><EditIcon /></button>
                                             <button onClick={() => handleDelete(b.id, b.budgetId)} className="icon-button delete" title="Excluir"><TrashIcon/></button>
                                         </td>
                                     </tr>

@@ -46,6 +46,16 @@ export default function App() {
         setCurrentPage('calculator');
     };
 
+    // --- ADIÇÃO DA NOVA FUNÇÃO DE DUPLICAR AQUI ---
+    const handleDuplicateBudget = (budget) => {
+        // Cria uma cópia do orçamento e adiciona a flag 'isDuplicate'
+        const budgetCopy = { ...budget, isDuplicate: true };
+        delete budgetCopy.id; // Remove o ID do documento antigo para criar um novo
+        
+        setBudgetToEdit(budgetCopy); // Envia a cópia para a calculadora
+        setCurrentPage('calculator');
+    };
+
     const clearEditingBudget = () => {
         setBudgetToEdit(null);
     };
@@ -65,6 +75,7 @@ export default function App() {
                 return <SavedBudgets
                     setCurrentPage={setCurrentPage}
                     handleEditBudget={handleEditBudget}
+                    handleDuplicateBudget={handleDuplicateBudget}
                     db={db}
                     DADOS_DA_EMPRESA={DADOS_DA_EMPRESA}
                     logoDaEmpresa={logoDaEmpresa}

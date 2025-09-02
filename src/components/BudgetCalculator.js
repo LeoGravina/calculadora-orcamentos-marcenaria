@@ -378,7 +378,7 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
                     <div className="table-container">
                         <table>
                             <thead><tr><th className="th-name">Nome</th><th>Preço</th><th>Medidas</th><th className="th-actions">Ações</th></tr></thead>
-                            <tbody>{sheets.map(s => (<tr key={s.id}><td className="td-name">{s.name}</td><td>{formatCurrency(s.price)}</td><td>{s.length}mm x {s.width}mm</td><td className="actions"><button onClick={() => editSheet(s)} className="icon-button" title="Editar"><EditIcon /></button><button onClick={() => deleteSheet(s.id, s.name)} className="icon-button delete" title="Excluir"><TrashIcon /></button></td></tr>))}</tbody>
+                            <tbody>{sheets.map(s => (<tr key={s.id}><td className="td-name">{s.name}</td><td>{formatCurrency(s.price)}</td><td>{s.length}mm x {s.width}mm</td><td className="actions"><button onClick={() => editSheet(s)} className="icon-button edit" title="Editar"><EditIcon /></button><button onClick={() => deleteSheet(s.id, s.name)} className="icon-button delete" title="Excluir"><TrashIcon /></button></td></tr>))}</tbody>
                         </table>
                     </div>
                 </div>
@@ -430,7 +430,7 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
                                             <td>{bandingText}</td>
                                             <td>{p.qty}</td>
                                             <td className="td-value">{formatCurrency(p.totalCost)}</td>
-                                            <td className="actions"><button onClick={() => editPiece(p)} className="icon-button" title="Editar"><EditIcon /></button><button onClick={() => deletePiece(p.id, p.name)} className="icon-button delete" title="Excluir"><TrashIcon /></button></td>
+                                            <td className="actions"><button onClick={() => editPiece(p)} className="icon-button edit" title="Editar"><EditIcon /></button><button onClick={() => deletePiece(p.id, p.name)} className="icon-button delete" title="Excluir"><TrashIcon /></button></td>
                                         </tr>
                                     );
                                 })}
@@ -489,7 +489,7 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
                                         <td>{formatCurrency(item.unitPrice)}</td>
                                         <td className="td-value">{formatCurrency(item.totalCost)}</td>
                                         <td className="actions">
-                                            <button onClick={() => editUnitItem(item)} className="icon-button" title="Editar"><EditIcon /></button>
+                                            <button onClick={() => editUnitItem(item)} className="icon-button edit" title="Editar"><EditIcon /></button>
                                             <button onClick={() => deleteUnitItem(item.id, item.name)} className="icon-button delete" title="Excluir"><TrashIcon /></button>
                                         </td>
                                     </tr>
@@ -513,7 +513,7 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
                      <div className="table-container">
                         <table>
                             <thead><tr><th className="th-name">Item</th><th>Qtd Usada</th><th className="th-value">Valor Final</th><th className="th-actions">Ações</th></tr></thead>
-                            <tbody>{hardware.map(i => (<tr key={i.id}><td className="td-name">{i.name}</td><td>{i.usedQty}</td><td className="td-value">{formatCurrency(i.totalCost)}</td><td className="actions"><button onClick={() => editHardware(i)} className="icon-button" title="Editar"><EditIcon /></button><button onClick={() => deleteHardware(i.id, i.name)} className="icon-button delete" title="Excluir"><TrashIcon /></button></td></tr>))}</tbody>
+                            <tbody>{hardware.map(i => (<tr key={i.id}><td className="td-name">{i.name}</td><td>{i.usedQty}</td><td className="td-value">{formatCurrency(i.totalCost)}</td><td className="actions"><button onClick={() => editHardware(i)} className="icon-button edit" title="Editar"><EditIcon /></button><button onClick={() => deleteHardware(i.id, i.name)} className="icon-button delete" title="Excluir"><TrashIcon /></button></td></tr>))}</tbody>
                         </table>
                     </div>
                 </div>
