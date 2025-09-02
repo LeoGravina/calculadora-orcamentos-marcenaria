@@ -7,6 +7,7 @@ import { Toaster } from 'react-hot-toast';
 import HomePage from './components/HomePage'; // VOLTOU A IMPORTAR
 import BudgetCalculator from './components/BudgetCalculator';
 import SavedBudgets from './components/SavedBudgets';
+import Materials from './components/Materials'
 import Commissions from './components/Commissions'; 
 
 import './App.css'; 
@@ -80,13 +81,17 @@ export default function App() {
                     DADOS_DA_EMPRESA={DADOS_DA_EMPRESA}
                     logoDaEmpresa={logoDaEmpresa}
                 />;
+            case 'materials':
+                return <Materials
+                    setCurrentPage={setCurrentPage}
+                    db={db}
+                />;
             case 'commissions':
                 return <Commissions
                     setCurrentPage={setCurrentPage}
                     db={db}
                 />;
             default:
-                // AGORA RENDERIZA O COMPONENTE IMPORTADO CORRETAMENTE
                 return <HomePage
                     setCurrentPage={setCurrentPage}
                     logoDaEmpresa={logoDaEmpresa}

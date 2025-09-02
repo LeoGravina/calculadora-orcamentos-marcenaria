@@ -95,15 +95,30 @@ const generateBudgetPdf = (budget, companyInfo, companyLogo) => {
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor('#333333');
-    doc.text('ORÇAMENTO', margin + 2, cursorY + 5);
+    doc.text('DESCRIÇÃO DOS ITENS', margin + 2, cursorY + 5); // Título mais apropriado
     cursorY += 7;
     
-    const tableHead = [['ITEM', 'PRODUTO/SERVIÇO', 'QTD.', 'VALOR UNIT.', 'SUB-TOTAL']];
+    // CABEÇALHO SIMPLIFICADO: Removemos as colunas de preço
+    const tableHead = [['ITEM', 'PRODUTO/SERVIÇO', 'QTD.']];
     const tableBody = [];
     let itemCounter = 1;
-    budget.pieces.forEach(p => { tableBody.push([ String(itemCounter++).padStart(2, '0'), `${p.name} (${p.length}x${p.width}mm)`, p.qty, formatCurrency(p.totalCost / p.qty), formatCurrency(p.totalCost) ]); });
-    budget.hardware.forEach(h => { tableBody.push([ String(itemCounter++).padStart(2, '0'), h.name, h.usedQty, formatCurrency(h.totalCost / h.usedQty), formatCurrency(h.totalCost) ]); });
-    budget.borderTapes.forEach(t => { tableBody.push([ String(itemCounter++).padStart(2, '0'), `${t.name} (${t.usedLength}m)`, 1, formatCurrency(t.totalCost), formatCurrency(t.totalCost) ]); });
+
+    // CORPO DA TABELA SIMPLIFICADO: Mostra apenas o que o item é, não quanto custa individualmente
+    // Adicionamos todos os tipos de itens em uma única lista para um tratamento unificado
+    const allItems = [
+        ...budget.pieces.map(p => ({ desc: `${p.name} (${p.length}x${p.width}mm)`, qty: p.qty })),
+        ...budget.borderTapes.map(t => ({ desc: `${t.name} (Acabamento de borda)`, qty: `(aprox. ${t.usedLength}m)` })),
+        ...budget.unitItems.map(i => ({ desc: i.name, qty: i.qty })),
+        ...budget.hardware.map(h => ({ desc: h.name, qty: h.usedQty }))
+    ];
+
+    allItems.forEach(item => {
+        tableBody.push([
+            String(itemCounter++).padStart(2, '0'),
+            item.desc,
+            item.qty
+        ]);
+    });
 
     autoTable(doc, {
         head: tableHead,
@@ -112,20 +127,29 @@ const generateBudgetPdf = (budget, companyInfo, companyLogo) => {
         theme: 'grid',
         styles: { fontSize: 8, cellPadding: 2, lineColor: '#CCCCCC', lineWidth: 0.1, },
         headStyles: { fillColor: '#F2F2F2', textColor: '#333333', fontStyle: 'bold', halign: 'center', lineColor: '#CCCCCC' },
-        columnStyles: { 0: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'right' }, 4: { halign: 'right' }},
+        // ESTILOS DE COLUNA ATUALIZADOS
+        columnStyles: { 0: { halign: 'center' }, 2: { halign: 'center' }},
         margin: { left: margin, right: margin }
     });
     
     let finalY = doc.lastAutoTable.finalY + 5;
     
-    // --- SEÇÃO 5: TOTAIS (em caixas) ---
-    drawLabeledBox(doc, 'SUB-TOTAL GERAL', formatCurrency(budget.subtotal + budget.finalHelperCost + budget.finalDeliveryFee), margin, finalY, boxWidthThird, 15, { align: 'right' });
-    
-    // CORREÇÃO: Mostra o desconto dinamicamente
-    const discountLabel = `DESCONTO (${budget.discountPercentage || 0}%)`;
-    drawLabeledBox(doc, discountLabel, `- ${formatCurrency(budget.finalDiscount || 0)}`, margin + boxWidthThird + 3, finalY, boxWidthThird, 15, { align: 'right' });
+// --- SEÇÃO 5: TOTAIS (em caixas) ---
+    // Lógica de fallback para garantir compatibilidade com orçamentos antigos
+    const subTotalFinal = budget.finalBudgetPrice || budget.grandTotal;
+    const descontoFinal = budget.finalDiscountAmount || budget.finalDiscount || 0;
+    const totalFinal = budget.finalValue || budget.grandTotal;
 
-    drawLabeledBox(doc, 'TOTAL GERAL', formatCurrency(budget.grandTotal), margin + (boxWidthThird * 2) + 6, finalY, boxWidthThird, 15, { align: 'right', isBold: true });
+    const discountLabel = `DESCONTO (${budget.discountPercentage || 0}%)`;
+
+    // Caixa 1: O valor que seu pai digitou
+    drawLabeledBox(doc, 'SUB-TOTAL', formatCurrency(subTotalFinal), margin, finalY, boxWidthThird, 15, { align: 'right' });
+    
+    // Caixa 2: O desconto calculado sobre o valor que seu pai digitou
+    drawLabeledBox(doc, discountLabel, `- ${formatCurrency(descontoFinal)}`, margin + boxWidthThird + 3, finalY, boxWidthThird, 15, { align: 'right' });
+
+    // Caixa 3: O valor final com desconto
+    drawLabeledBox(doc, 'TOTAL GERAL', formatCurrency(totalFinal), margin + (boxWidthThird * 2) + 6, finalY, boxWidthThird, 15, { align: 'right', isBold: true });
     finalY += 20;
 
     // --- SEÇÃO 6: OBSERVAÇÕES E QR CODE ---

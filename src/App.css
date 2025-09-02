@@ -267,15 +267,15 @@ td.actions .icon-button {
     color: #1e40af;           /* Ícone azul escuro */
 }
 .icon-button.duplicate { 
-    background-color: #eaedf8; /* Fundo lilás claro */
+    background-color: #dae2eb; /* Fundo lilás claro */
     color: #3730a3;           /* Ícone roxo escuro */
 }
 .icon-button.edit { 
-    background-color: #f3eeda; /* Fundo amarelo claro */
+    background-color: #dae2eb; /* Fundo amarelo claro */
     color: #92400e;           /* Ícone âmbar escuro */
 }
 .icon-button.delete { 
-    background-color: #dec5c5; /* Fundo vermelho claro */
+    background-color: #dae2eb; /* Fundo vermelho claro */
     color: #b91c1c;           /* Ícone vermelho escuro */
 }
 
@@ -464,3 +464,114 @@ tbody tr:nth-of-type(even) {
 
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slideIn { from { transform: translateY(-30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+/* Estilos para a navegação por abas de materiais */
+.tabs-container {
+    display: flex;
+    border-bottom: 2px solid #e0e0e0;
+    margin-bottom: 24px;
+}
+
+.tab-button {
+    padding: 10px 20px;
+    cursor: pointer;
+    border: none;
+    background-color: transparent;
+    font-size: 16px;
+    font-weight: 500;
+    color: #666;
+    margin-bottom: -2px; /* Alinha o border-bottom com a borda do container */
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s ease-in-out;
+}
+
+.tab-button:hover {
+    color: #0056b3; /* Cor um pouco mais escura no hover */
+}
+
+.tab-button.active {
+    color: #007bff; /* Cor de destaque para a aba ativa */
+    border-bottom: 2px solid #007bff;
+    font-weight: 600;
+}
+
+/* Mensagem para quando não há materiais */
+.no-materials-message {
+    text-align: center;
+    padding: 40px 20px;
+    background-color: #f9f9f9;
+    border-radius: 8px;
+    margin-top: 20px;
+    color: #777;
+    font-style: italic;
+}
+
+/* Estilos para a navegação por abas (reutilizável) */
+.tabs-container {
+    display: flex;
+    border-bottom: 2px solid #e0e0e0;
+    margin-top: 1rem;
+}
+
+.tab-button {
+    padding: 10px 20px;
+    cursor: pointer;
+    border: none;
+    background-color: transparent;
+    font-size: 16px;
+    font-weight: 500;
+    color: #666;
+    margin-bottom: -2px;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s ease-in-out;
+}
+
+.tab-button:hover {
+    color: #0056b3;
+}
+
+.tab-button.active {
+    color: #007bff;
+    border-bottom: 2px solid #007bff;
+    font-weight: 600;
+}
+
+/* Efeito de fade-in para o conteúdo da aba */
+.form-fade-in {
+  animation: fadeIn 0.5s;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.grand-total-input label {
+  font-size: 16px;
+  font-weight: 600;
+  color: #000000;
+  font-style: bold;
+}
+.final-price-input {
+  font-size: 24px;
+  font-weight: 700;
+  color: #007bff;
+  text-align: right;
+  padding: 8px;
+  border: 2px solid #007bff;
+}
+
+.saved-final-price {
+  padding: 10px;
+  background-color: #e6f7ff; /* Um azul bem claro */
+  border: 1px solid #91d5ff; /* Borda azul */
+  border-radius: 8px;
+}
+.saved-final-price span:first-child {
+  font-weight: 600;
+}
+.saved-final-price span:last-child {
+  font-weight: 700;
+  font-size: 24px;
+  color: #0056b3;
+}

@@ -145,31 +145,38 @@ const SavedBudgets = ({ setCurrentPage, handleEditBudget, handleDuplicateBudget,
                                 </tr>
                             </thead>
                             <tbody>
-                                {budgets.length > 0 ? budgets.map(b => (
-                                    <tr key={b.id}>
-                                        <td>{b.budgetId || 'N/A'}</td>
-                                        <td className="td-name">{b.clientName}</td>
-                                        <td>{b.projectName}</td>
-                                        <td>
-                                            <select 
-                                                value={b.status || 'Pendente'} 
-                                                onChange={(e) => handleStatusChange(b.id, e.target.value)}
-                                                className={`status-select status-${(b.status || 'Pendente').replace(' ', '-')}`}
-                                            >
-                                                {statusOptions.map(option => (
-                                                    <option key={option} value={option}>{option}</option>
-                                                ))}
-                                            </select>
-                                        </td>
-                                        <td className="td-value">{formatCurrency(b.grandTotal || 0)}</td>
-                                        <td className="actions">
-                                            <button onClick={() => handleDownloadPdf(b)} className="icon-button download" title="Baixar PDF"><DownloadIcon /></button>
-                                            <button onClick={() => handleDuplicateBudget(b)} className="icon-button duplicate" title="Duplicar"><DuplicateIcon /></button>
-                                            <button onClick={() => handleEditBudget(b)} className="icon-button edit" title="Editar"><EditIcon /></button>
-                                            <button onClick={() => handleDelete(b.id, b.budgetId)} className="icon-button delete" title="Excluir"><TrashIcon/></button>
-                                        </td>
-                                    </tr>
-                                )) : (
+                                {budgets.length > 0 ? budgets.map(b => {
+                                    // LÓGICA ADICIONADA: Decide qual total deve ser exibido na tabela.
+                                    // Usa o 'finalBudgetPrice' se ele existir; senão, usa o 'grandTotal'.
+                                    const displayTotal = b.finalBudgetPrice ? b.finalBudgetPrice : b.grandTotal;
+
+                                    return (
+                                        <tr key={b.id}>
+                                            <td>{b.budgetId || 'N/A'}</td>
+                                            <td className="td-name">{b.clientName}</td>
+                                            <td>{b.projectName}</td>
+                                            <td>
+                                                <select 
+                                                    value={b.status || 'Pendente'} 
+                                                    onChange={(e) => handleStatusChange(b.id, e.target.value)}
+                                                    className={`status-select status-${(b.status || 'Pendente').replace(' ', '-')}`}
+                                                >
+                                                    {statusOptions.map(option => (
+                                                        <option key={option} value={option}>{option}</option>
+                                                    ))}
+                                                </select>
+                                            </td>
+                                            {/* LINHA ALTERADA: Agora usa a variável 'displayTotal' */}
+                                            <td className="td-value">{formatCurrency(displayTotal || 0)}</td>
+                                            <td className="actions">
+                                                <button onClick={() => handleDownloadPdf(b)} className="icon-button download" title="Baixar PDF"><DownloadIcon /></button>
+                                                <button onClick={() => handleDuplicateBudget(b)} className="icon-button duplicate" title="Duplicar"><DuplicateIcon /></button>
+                                                <button onClick={() => handleEditBudget(b)} className="icon-button edit" title="Editar"><EditIcon /></button>
+                                                <button onClick={() => handleDelete(b.id, b.budgetId)} className="icon-button delete" title="Excluir"><TrashIcon/></button>
+                                            </td>
+                                        </tr>
+                                    );
+                                }) : (
                                     <tr>
                                         <td colSpan="6" style={{ textAlign: 'center', padding: '1rem' }}>
                                             Nenhum orçamento encontrado.
