@@ -132,15 +132,35 @@ const Materials = ({ db, setCurrentPage }) => {
     };
 
     const editMaterial = (material) => {
+        // Popula o formulário correto (esta parte já estava certa)
         if (material.type === 'sheet') setSheetForm(material);
         if (material.type === 'edge_band') setEdgeBandForm(material);
         if (material.type === 'unitary_item') setUnitaryItemForm(material);
         if (material.type === 'hardware_box') setHardwareBoxForm(material);
         
-        setActiveTab(material.type.replace('_', '') + 's');
+        let tabNameToActivate;
+        switch (material.type) {
+            case 'sheet':
+                tabNameToActivate = 'sheets';
+                break;
+            case 'edge_band':
+                tabNameToActivate = 'edgeBands'; // Nome corrigido
+                break;
+            case 'unitary_item':
+                tabNameToActivate = 'unitaryItems'; // Nome corrigido
+                break;
+            case 'hardware_box':
+                tabNameToActivate = 'hardwareBoxes'; // Nome corrigido
+                break;
+            default:
+                // Valor padrão para segurança
+                tabNameToActivate = 'sheets';
+        }
+        setActiveTab(tabNameToActivate);
+        
+        // Rola a página para o topo
         window.scrollTo(0, 0);
     };
-
     const closeModal = () => setModalState({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
     const handleDeleteConfirm = async (id) => {

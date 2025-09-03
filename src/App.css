@@ -103,7 +103,6 @@ body {
     margin: 2rem auto 0;
 }
 
-
 /* Botão: Novo Orçamento */
 .home-buttons .btn.btn-add {
     background-color: #f79009;
@@ -589,4 +588,49 @@ tbody tr:nth-of-type(even) {
   font-weight: 700;
   font-size: 24px;
   color: #0056b3;
+}
+
+/* NOVOS ESTILOS PARA O PLANO DE CORTE */
+.piece-dimension {
+    position: absolute;
+    font-size: 7px;
+    color: #4b5563;
+    background-color: rgba(255, 255, 255, 0.7);
+    padding: 0 2px;
+    border-radius: 2px;
+}
+
+.piece-dimension-width {
+    top: -15px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.piece-dimension-height {
+    left: -20px;
+    top: 50%;
+    transform: translateY(-50%) rotate(-90deg);
+}
+
+/* NOVO ESTILO PARA O FUNDO DO PLANO DE CORTE */
+.sheet-background {
+    background-color: #ffffff;
+    /* Linhas diagonais para simular o material que sobra */
+    background-image: repeating-linear-gradient(
+        45deg,
+        #e5e7eb 25%,
+        transparent 25%,
+        transparent 75%,
+        #e5e7eb 75%,
+        #e5e7eb
+    ),
+    repeating-linear-gradient(
+        -45deg,
+        #e5e7eb 25%,
+        transparent 25%,
+        transparent 75%,
+        #e5e7eb 75%,
+        #e5e7eb
+    );
+    background-size: 10px 10px;
 }

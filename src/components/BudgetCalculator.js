@@ -6,6 +6,8 @@ import { EditIcon, TrashIcon } from './icons';
 import { getImageBase64, formatCurrency } from '../utils/helpers';
 import generateBudgetPdf from '../utils/pdfGenerator';
 import { qrCodeBase64 } from '../utils/qrCodeImage';
+import { cuttingOptimizer } from '../utils/cuttingOptimizer';
+import CuttingPlanCanvas from '../components/CuttingPlanCanvas';
 import Modal from './Modal';
 
 const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db, DADOS_DA_EMPRESA, logoDaEmpresa }) => {
@@ -23,7 +25,18 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
     const [hardware, setHardware] = useState([]);
     const [unitItems, setUnitItems] = useState([]);
     const [manualSheetForm, setManualSheetForm] = useState({ name: '', price: '', length: '', width: '' });
-    const initialPieceForm = useMemo(() => ({ name: "", price: 0, quantity: 1 }), []);
+    const initialPieceForm = useMemo(() => ({
+        name: "",
+        length: "",
+        width: "",
+        qty: 1,
+        sheetId: '', // Importante adicionar
+        bandL1: false,
+        bandL2: false,
+        bandW1: false,
+        bandW2: false,
+        id: null // Usado para saber se está editando
+    }), []);
     const [pieceForm, setPieceForm] = useState(initialPieceForm);
     const [hardwareForm, setHardwareForm] = useState({ catalogId: '', usedQty: '', name: '', boxPrice: '', boxQty: '', id: null });
     const [unitItemForm, setUnitItemForm] = useState({ catalogId: '', qty: '', name: '', unitPrice: '', id: null });
@@ -33,15 +46,17 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
     const [clientPhone, setClientPhone] = useState('');
     const [projectName, setProjectName] = useState('');
     const [description, setDescription] = useState('');
-    const [profitMargin, setProfitMargin] = useState(180);
+    const [profitMargin, setProfitMargin] = useState(220);
     const [helperCost, setHelperCost] = useState('');
     const [deliveryFee, setDeliveryFee] = useState('');
     const [discountPercentage, setDiscountPercentage] = useState(0);
     const [modalState, setModalState] = useState({ isOpen: false, title: '', message: '', onConfirm: () => {} });
     const [finalBudgetPrice, setFinalBudgetPrice] = useState('');
     const [, setIsPriceManuallySet] = useState(false);
+    const [landscapePlan, setLandscapePlan] = useState(null);
+    const [portraitPlan, setPortraitPlan] = useState(null);
+    const [isLoadingPlan, setIsLoadingPlan] = useState(false);
     const fetchLock = useRef(false);
-
 
     const fetchAndSetNextBudgetId = useCallback(async () => {
         const counterRef = doc(db, "counters", "budgets");
@@ -52,43 +67,134 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
         } catch (error) { console.error("Erro ao buscar ID:", error); setBudgetId('N/A'); }
     }, [db]);
 
-    useEffect(() => {
-        const fetchCatalogMaterials = async () => {
-            const toastId = toast.loading('Carregando catálogo...');
+    const handleGenerateCuttingPlan = () => {
+        if (pieces.length === 0 || sheets.length === 0) {
+            toast.error("Adicione peças e chapas para gerar um plano de corte.");
+            return;
+        }
+
+        setIsLoadingPlan(true);
+        setLandscapePlan(null); // Limpa os planos antigos
+        setPortraitPlan(null);
+
+        // Usamos um setTimeout para permitir que o estado de loading atualize a tela
+        setTimeout(() => {
             try {
-                const materialsCollectionRef = collection(db, "materials");
-                const querySnapshot = await getDocs(materialsCollectionRef);
-                const allMaterials = querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+                // --- CORREÇÃO 1: Garantir que as dimensões das peças sejam NÚMEROS ---
+                // O otimizador precisa de números para fazer cálculos, não strings de texto.
+                const piecesWithNumericDimensions = pieces.map(p => ({
+                    ...p,
+                    length: parseInt(p.length, 10),
+                    width: parseInt(p.width, 10),
+                    qty: parseInt(p.qty, 10) || 1
+                }));
 
-                const sheetsData = allMaterials.filter(m => m.type === 'sheet');
-                const edgeBandsData = allMaterials.filter(m => m.type === 'edge_band');
-                const unitItemsData = allMaterials.filter(m => m.type === 'unitary_item');
-                const hardwareData = allMaterials.filter(m => m.type === 'hardware_box');
+                // Função auxiliar para expandir as peças com base na quantidade
+                const expandPieces = (pieceList) => {
+                    return pieceList.flatMap(piece => 
+                        Array.from({ length: piece.qty }, (_, i) => ({
+                            ...piece,
+                            uniqueId: `${piece.id}-${i}`,
+                        }))
+                    );
+                };
 
-                setCatalogSheets(sheetsData);
-                setCatalogEdgeBands(edgeBandsData);
-                setCatalogUnitItems(unitItemsData);
-                setCatalogHardware(hardwareData);
+                // --- CÁLCULO DO PLANO HORIZONTAL (LANDSCAPE) ---
+                const landscapeSheets = sheets.map(s => ({...s})); // Cópia das chapas
 
-                setSheets(sheetsData);
-                if (sheetsData.length > 0) {
-                    setPieceForm(p => ({ ...p, sheetId: sheetsData[0].id }));
+                // --- CORREÇÃO 2: Usar uma cópia nova das peças para cada plano ---
+                // Isso evita que a primeira chamada do otimizador modifique a lista de peças
+                // e afete o resultado da segunda chamada.
+                const piecesForPlan1 = expandPieces(piecesWithNumericDimensions);
+
+                if (piecesForPlan1.length === 0) {
+                    toast.error("Não há peças para o plano de corte.");
+                    setIsLoadingPlan(false);
+                    return;
                 }
-                if (edgeBandsData.length > 0) {
-                    setBorderTapes([{ ...edgeBandsData[0], usedLength: 0 }]);
-                    setActiveBorderTapeTab('select');
-                } else {
-                    setActiveBorderTapeTab('manual');
-                    setBorderTapes([{id: 'manual-tape', name: '', rollPrice: '', rollLength: '', usedLength: 0, isLocal: true}])
-                }
-                toast.success('Catálogo carregado!', { id: toastId });
+                
+                const plan1 = cuttingOptimizer(piecesForPlan1, landscapeSheets);
+                setLandscapePlan(plan1);
+                console.log("Plano Horizontal Gerado:", plan1);
+
+                // --- CÁLCULO DO PLANO VERTICAL (PORTRAIT) ---
+                const portraitSheets = sheets.map(s => ({
+                    ...s,
+                    length: s.width, // Inverte as dimensões
+                    width: s.length,
+                    name: `${s.name} (Em Pé)`
+                }));
+                // Cria uma SEGUNDA cópia limpa das peças para o segundo plano
+                const piecesForPlan2 = expandPieces(piecesWithNumericDimensions);
+                
+                const plan2 = cuttingOptimizer(piecesForPlan2, portraitSheets);
+                setPortraitPlan(plan2);
+                console.log("Plano Vertical Gerado:", plan2);
+
+                toast.success("Planos de corte gerados!");
+
             } catch (error) {
-                console.error("Erro ao buscar catálogo:", error);
-                toast.error("Falha ao carregar catálogo.", { id: toastId });
+                console.error("Erro ao gerar planos de corte:", error);
+                toast.error("Ocorreu um erro ao gerar os planos.");
+            } finally {
+                setIsLoadingPlan(false);
             }
-        };
+        }, 50); // Um pequeno delay para o feedback de loading funcionar
+    };
 
+    const resetForm = useCallback(() => { 
+        setEditingId(null); setClientName(''); setClientPhone(''); setProjectName(''); setDescription(''); 
+        setProfitMargin(180); setHelperCost(''); setDeliveryFee(''); setDiscountPercentage(0);
+        setPieces([]); setHardware([]); setUnitItems([]);
+        setSheets(catalogSheets);
+        setBorderTapes(catalogEdgeBands.length > 0 ? [{ ...catalogEdgeBands[0], usedLength: 0 }] : []);
+        setActiveSheetTab('select'); setActiveBorderTapeTab('select'); setActiveUnitItemTab('catalog'); setActiveHardwareTab('catalog');
+        setPieceForm(initialPieceForm);
+        setUnitItemForm({ catalogId: '', qty: '', name: '', unitPrice: '', id: null });
+        setHardwareForm({ catalogId: '', usedQty: '', name: '', boxPrice: '', boxQty: '', id: null });
+        setFinalBudgetPrice('');
+        setIsPriceManuallySet(false);
+        if(clearEditingBudget) clearEditingBudget(); 
+        fetchAndSetNextBudgetId();
+        toast.success('Formulário limpo.');
+    }, [catalogSheets, catalogEdgeBands, clearEditingBudget, initialPieceForm, fetchAndSetNextBudgetId]);
+
+// 1. useEffect DEDICADO a carregar o catálogo UMA ÚNICA VEZ.
+    useEffect(() => {
+        // A trava garante que o catálogo seja buscado apenas na primeira vez que o componente montar.
+        if (fetchLock.current === false) {
+            fetchLock.current = true; // Ativa a trava para não buscar novamente
+
+            const fetchCatalogMaterials = async () => {
+                const toastId = toast.loading('Carregando catálogo de materiais...');
+                try {
+                    const materialsCollectionRef = collection(db, "materials");
+                    const querySnapshot = await getDocs(materialsCollectionRef);
+                    const allMaterials = querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+
+                    // Filtra e atualiza os estados do catálogo
+                    setCatalogSheets(allMaterials.filter(m => m.type === 'sheet'));
+                    setCatalogEdgeBands(allMaterials.filter(m => m.type === 'edge_band'));
+                    setCatalogUnitItems(allMaterials.filter(m => m.type === 'unitary_item'));
+                    setCatalogHardware(allMaterials.filter(m => m.type === 'hardware_box'));
+                    
+                    toast.success('Catálogo carregado!', { id: toastId });
+                } catch (error) {
+                    console.error("Erro ao buscar catálogo:", error);
+                    toast.error("Falha ao carregar catálogo.", { id: toastId });
+                }
+            };
+
+            fetchCatalogMaterials();
+        }
+    }, [db]); // Depende apenas de 'db', que é estável.
+
+
+    // 2. useEffect DEDICADO a reagir a MUDANÇAS (novo orçamento vs. edição).
+    useEffect(() => {
+        // SE ESTIVER EDITANDO UM ORÇAMENTO...
         if (budgetToEdit) {
+            // Apenas carrega os dados do orçamento. Não busca o catálogo novamente.
             setEditingId(budgetToEdit.id);
             setBudgetId(budgetToEdit.budgetId || '');
             setClientName(budgetToEdit.clientName || '');
@@ -104,25 +210,28 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
             setHardware(budgetToEdit.hardware || []);
             setUnitItems(budgetToEdit.unitItems || []);
             setBorderTapes(budgetToEdit.borderTapes || []);
+            // ... (resto da sua lógica de preenchimento)
 
-            // --- CORREÇÃO APLICADA AQUI ---
-            const finalPrice = budgetToEdit.finalBudgetPrice || '';
-            setFinalBudgetPrice(finalPrice);
-            // Se existir um preço final salvo, ativamos a trava manualmente
-            if (finalPrice) {
-                setIsPriceManuallySet(true);
-            }
-            // --- FIM DA CORREÇÃO ---
-
+        // SE FOR UM ORÇAMENTO NOVO...
         } else {
-            // Se for um novo orçamento, usa a trava para executar apenas uma vez
-            if (fetchLock.current === false) {
-                fetchLock.current = true;
-                fetchAndSetNextBudgetId();
-                fetchCatalogMaterials();
+            // Apenas prepara o formulário para um novo orçamento.
+            resetForm();
+            fetchAndSetNextBudgetId();
+
+            // Configura os padrões usando o catálogo que JÁ FOI CARREGADO pelo primeiro useEffect.
+            if (catalogSheets.length > 0) {
+                setSheets(catalogSheets);
+                setPieceForm(p => ({ ...p, sheetId: catalogSheets[0].id }));
+            }
+            if (catalogEdgeBands.length > 0) {
+                setBorderTapes([{ ...catalogEdgeBands[0], usedLength: 0 }]);
+                setActiveBorderTapeTab('select');
+            } else {
+                setActiveBorderTapeTab('manual');
+                setBorderTapes([{id: 'manual-tape', name: '', rollPrice: '', rollLength: '', usedLength: 0, isLocal: true}]);
             }
         }
-    }, [db, budgetToEdit, fetchAndSetNextBudgetId]);
+    }, [budgetToEdit, catalogSheets, catalogEdgeBands, fetchAndSetNextBudgetId, resetForm]);
     
    const totals = useMemo(() => {
         const margin = 1 + (parseFloat(profitMargin) || 0) / 100;
@@ -162,23 +271,6 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
     }, [pieces, hardware, unitItems, sheets, profitMargin, deliveryFee, helperCost, borderTapes, discountPercentage, finalBudgetPrice]); // Adicionado finalBudgetPrice às dependências
     
     const closeModal = () => setModalState({ isOpen: false, title: '', message: '', onConfirm: () => {} });
-
-    const resetForm = useCallback(() => { 
-        setEditingId(null); setClientName(''); setClientPhone(''); setProjectName(''); setDescription(''); 
-        setProfitMargin(180); setHelperCost(''); setDeliveryFee(''); setDiscountPercentage(0);
-        setPieces([]); setHardware([]); setUnitItems([]);
-        setSheets(catalogSheets);
-        setBorderTapes(catalogEdgeBands.length > 0 ? [{ ...catalogEdgeBands[0], usedLength: 0 }] : []);
-        setActiveSheetTab('select'); setActiveBorderTapeTab('select'); setActiveUnitItemTab('catalog'); setActiveHardwareTab('catalog');
-        setPieceForm(initialPieceForm);
-        setUnitItemForm({ catalogId: '', qty: '', name: '', unitPrice: '', id: null });
-        setHardwareForm({ catalogId: '', usedQty: '', name: '', boxPrice: '', boxQty: '', id: null });
-        setFinalBudgetPrice('');
-        setIsPriceManuallySet(false);
-        if(clearEditingBudget) clearEditingBudget(); 
-        fetchAndSetNextBudgetId();
-        toast.success('Formulário limpo.');
-    }, [catalogSheets, catalogEdgeBands, clearEditingBudget, initialPieceForm, fetchAndSetNextBudgetId]);
 
     const handleSaveBudget = async () => {
         if (!clientName || !projectName) { toast.error('Preencha o nome do cliente e do projeto.'); return; }
@@ -283,10 +375,19 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
         e.preventDefault();
         const isEditing = !!pieceForm.id;
         setPieces(isEditing ? pieces.map(p => p.id === pieceForm.id ? pieceForm : p) : [...pieces, { ...pieceForm, id: crypto.randomUUID() }]);
-        setPieceForm(initialPieceForm);
+        
+        // Lógica de reset corrigida que mantém a chapa selecionada
+        setPieceForm(prevForm => ({
+            ...initialPieceForm,
+            sheetId: prevForm.sheetId
+        }));
+
         toast.success(isEditing ? 'Peça atualizada!' : 'Peça adicionada!');
     };
-    const editPiece = (p) => setPieceForm(p);
+
+    const editPiece = (pieceToEdit) => {
+    setPieceForm({ ...initialPieceForm, ...pieceToEdit });
+    };
     const deletePiece = (id, name) => {
         setModalState({ isOpen: true, title: 'Confirmar Exclusão', message: `Tem certeza que deseja excluir a peça "${name}"?`, onConfirm: () => { setPieces(p => p.filter(i => i.id !== id)); closeModal(); toast.success('Peça removida.'); }, confirmButtonClass: 'btn-delete-action' });
     };
@@ -533,6 +634,47 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
                     </div>
                 </div>
 
+                <div className="card" style={{ marginTop: '2rem' }}>
+                    <h2 className="section-title">Plano de Corte</h2>
+                    <button onClick={handleGenerateCuttingPlan} className="btn btn-secondary" disabled={isLoadingPlan}>
+                        {isLoadingPlan ? 'Gerando Planos...' : 'Gerar Plano de Corte'}
+                    </button>
+
+                    {isLoadingPlan && <p style={{marginTop: '1rem'}}>Calculando a melhor forma de cortar suas peças...</p>}
+
+                    {/* Container para os dois planos */}
+                    {/* A nova condição é esta: (landscapePlan || portraitPlan) */}
+                    {(landscapePlan || portraitPlan) && (
+                        <div className="cutting-plan-results-container">
+                            
+                            {/* Coluna do Plano Horizontal */}
+                            <div className="cutting-plan-option">
+                                <h3>Opção 1: Chapas na Horizontal</h3>
+                                {landscapePlan && landscapePlan.usedSheets.length > 0 ? (
+                                    <>
+                                        <p className="canvas-info">Total de Chapas Usadas: <strong>{landscapePlan.usedSheets.length}</strong></p>
+                                        <CuttingPlanCanvas cuttingPlan={landscapePlan} />
+                                    </>
+                                ) : (
+                                    <p>{landscapePlan?.error || "Não foi possível gerar este plano."}</p>
+                                )}
+                            </div>
+
+                            {/* Coluna do Plano Vertical */}
+                            <div className="cutting-plan-option">
+                                <h3>Opção 2: Chapas na Vertical</h3>
+                                {portraitPlan && portraitPlan.usedSheets.length > 0 ? (
+                                    <>
+                                        <p className="canvas-info">Total de Chapas Usadas: <strong>{portraitPlan.usedSheets.length}</strong></p>
+                                        <CuttingPlanCanvas cuttingPlan={portraitPlan} />
+                                    </>
+                                ) : (
+                                    <p>{portraitPlan?.error || "Não foi possível gerar este plano."}</p>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
                 <div className="card">
                     <h2 className="section-title">Fita de Borda</h2>
                     <div className="tabs-container">
@@ -602,10 +744,8 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
                     </form>
                     <div className="table-container">
                         <table>
-                            {/* CORREÇÃO CSS: Adicionada className="th-actions" */}
                             <thead><tr><th className="th-name">Item</th><th>Qtd</th><th>Valor Unit.</th><th>Origem</th><th>Valor Final</th><th className="th-actions">Ações</th></tr></thead>
                             <tbody>{unitItems.map(item => (<tr key={item.id}><td>{item.name}</td><td>{item.qty}</td><td>{formatCurrency(item.unitPrice)}</td><td>{getOriginBadge(item)}</td><td className="td-value">{formatCurrency(item.totalCost)}</td>
-                                {/* CORREÇÃO CSS: Adicionada className="actions" */}
                                 <td className="actions">
                                     <button onClick={() => editUnitItem(item)} className="icon-button edit" title="Editar"><EditIcon /></button>
                                     <button onClick={() => deleteUnitItem(item.id, item.name)} className="icon-button delete" title="Excluir"><TrashIcon /></button>
@@ -644,7 +784,7 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
                         </div>
                         <div className="form-group" style={{marginTop: '1rem', maxWidth: '200px'}}>
                             <label>Quantidade Usada</label>
-                            <input type="number" name="usedQty" value={hardwareForm.usedQty} onChange={(e) => setHardwareForm(p => ({...p, usedQty: e.target.value}))} required />
+                            <input type="number" name="usedQty" value={hardwareForm.usedQty} onChange={(e) => setHardwareForm(p => ({...p, usedQty: e.target.value}))} placeholder="Ex: 3" required />
                         </div>
                         <button type="submit" className={`btn form-submit-button ${hardwareForm.id ? 'btn-save' : 'btn-add'}`}>{hardwareForm.id ? 'Salvar Alterações' : '+ Adicionar Item'}</button>
                     </form>
@@ -678,7 +818,7 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
                         <hr className="summary-divider" />
                         
                         <div className="summary-item">
-                            <span>Valor Base (Custo + Lucro):</span>
+                            <span>Valor Calculado pelo Algoritmo (Custo + Lucro):</span>
                             <span>{formatCurrency(totals.grandTotal)}</span>
                         </div>
 
@@ -694,7 +834,7 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
                                         setFinalBudgetPrice(e.target.value);
                                         setIsPriceManuallySet(true); 
                                     }}
-                                    placeholder="Digite o total"
+                                    placeholder="Digite o valor total"
                                 />
                         </div>
                         
