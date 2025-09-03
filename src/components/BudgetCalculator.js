@@ -57,6 +57,19 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
     const [portraitPlan, setPortraitPlan] = useState(null);
     const [isLoadingPlan, setIsLoadingPlan] = useState(false);
     const fetchLock = useRef(false);
+    const isDraftRestored = useRef(false);
+
+    // NOVO: Refs para os formulários de edição
+    const sheetFormRef = useRef(null);
+    const pieceFormRef = useRef(null);
+    const unitItemFormRef = useRef(null);
+    const hardwareFormRef = useRef(null);
+
+    // NOVO: Estado para controlar o modal de confirmação de rascunho
+    const [draftModalState, setDraftModalState] = useState({ isOpen: false });
+
+    // NOVO: Ref para controlar o timeout do autosave
+    const autosaveTimeoutRef = useRef(null);
 
     const fetchAndSetNextBudgetId = useCallback(async () => {
         const counterRef = doc(db, "counters", "budgets");
@@ -66,6 +79,74 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
             setBudgetId(String(nextId).padStart(3, '0'));
         } catch (error) { console.error("Erro ao buscar ID:", error); setBudgetId('N/A'); }
     }, [db]);
+
+    // NOVO: Função para restaurar o rascunho quando o usuário confirma no modal
+    const handleRestoreDraft = () => {
+        const savedDraft = localStorage.getItem('budgetDraft');
+        if (savedDraft) {
+            try {
+                const draft = JSON.parse(savedDraft);
+                setClientName(draft.clientName || '');
+                setClientPhone(draft.clientPhone || '');
+                setProjectName(draft.projectName || '');
+                setDescription(draft.description || '');
+                setProfitMargin(draft.profitMargin || 220);
+                setHelperCost(draft.helperCost || '');
+                setDeliveryFee(draft.deliveryFee || '');
+                setDiscountPercentage(draft.discountPercentage || 0);
+                setSheets(draft.sheets || []);
+                setPieces(draft.pieces || []);
+                setHardware(draft.hardware || []);
+                setUnitItems(draft.unitItems || []);
+                setBorderTapes(draft.borderTapes || []);
+                setFinalBudgetPrice(draft.finalBudgetPrice || '');
+                isDraftRestored.current = true;
+                toast.success('Rascunho anterior restaurado!');
+            } catch (error) {
+                toast.error('Não foi possível restaurar o rascunho.');
+                localStorage.removeItem('budgetDraft'); // Limpa rascunho corrompido
+                resetForm(false);
+            }
+        }
+        setDraftModalState({ isOpen: false }); // Fecha o modal
+    };
+
+    // NOVO: Função para descartar o rascunho e começar um novo orçamento
+    const handleDiscardDraft = () => {
+        localStorage.removeItem('budgetDraft'); // Remove o rascunho antigo
+        setDraftModalState({ isOpen: false }); // Fecha o modal
+        resetForm(false); // Garante que o formulário esteja limpo
+        toast.success('Iniciando um novo orçamento.');
+    };
+
+    // ALTERADO: A função de reset agora é silenciosa por padrão
+    const resetForm = useCallback((showToast = false) => { 
+        setEditingId(null); setClientName(''); setClientPhone(''); setProjectName(''); setDescription(''); 
+        setProfitMargin(180); setHelperCost(''); setDeliveryFee(''); setDiscountPercentage(0);
+        setPieces([]); setHardware([]); setUnitItems([]);
+        setSheets(catalogSheets);
+        setBorderTapes(catalogEdgeBands.length > 0 ? [{ ...catalogEdgeBands[0], usedLength: 0 }] : []);
+        setActiveSheetTab('select'); setActiveBorderTapeTab('select'); setActiveUnitItemTab('catalog'); setActiveHardwareTab('catalog');
+        setPieceForm(initialPieceForm);
+        setUnitItemForm({ catalogId: '', qty: '', name: '', unitPrice: '', id: null });
+        setHardwareForm({ catalogId: '', usedQty: '', name: '', boxPrice: '', boxQty: '', id: null });
+        setFinalBudgetPrice('');
+        setIsPriceManuallySet(false);
+        if(clearEditingBudget) clearEditingBudget(); 
+        fetchAndSetNextBudgetId();
+
+        // Só mostra o toast se a função for chamada com o parâmetro `true`
+        if (showToast) {
+            toast.success('Formulário limpo.');
+        }
+    }, [catalogSheets, catalogEdgeBands, clearEditingBudget, initialPieceForm, fetchAndSetNextBudgetId]);
+
+    // NOVO: Função específica para o botão "Cancelar", que limpa o rascunho e mostra o toast
+    const handleCancelBudget = () => {
+        localStorage.removeItem('budgetDraft'); // Limpa o rascunho
+        resetForm(true); // Chama o reset e pede para mostrar a notificação
+        setCurrentPage('home');
+    };
 
     const handleGenerateCuttingPlan = () => {
         if (pieces.length === 0 || sheets.length === 0) {
@@ -142,24 +223,25 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
         }, 50); // Um pequeno delay para o feedback de loading funcionar
     };
 
-    const resetForm = useCallback(() => { 
-        setEditingId(null); setClientName(''); setClientPhone(''); setProjectName(''); setDescription(''); 
-        setProfitMargin(180); setHelperCost(''); setDeliveryFee(''); setDiscountPercentage(0);
-        setPieces([]); setHardware([]); setUnitItems([]);
-        setSheets(catalogSheets);
-        setBorderTapes(catalogEdgeBands.length > 0 ? [{ ...catalogEdgeBands[0], usedLength: 0 }] : []);
-        setActiveSheetTab('select'); setActiveBorderTapeTab('select'); setActiveUnitItemTab('catalog'); setActiveHardwareTab('catalog');
-        setPieceForm(initialPieceForm);
-        setUnitItemForm({ catalogId: '', qty: '', name: '', unitPrice: '', id: null });
-        setHardwareForm({ catalogId: '', usedQty: '', name: '', boxPrice: '', boxQty: '', id: null });
-        setFinalBudgetPrice('');
-        setIsPriceManuallySet(false);
-        if(clearEditingBudget) clearEditingBudget(); 
-        fetchAndSetNextBudgetId();
-        toast.success('Formulário limpo.');
-    }, [catalogSheets, catalogEdgeBands, clearEditingBudget, initialPieceForm, fetchAndSetNextBudgetId]);
+    // ADICIONE ESTE BLOCO CORRIGIDO NO LUGAR DOS DOIS ACIMA
+    useEffect(() => {
+        // Esta lógica só deve rodar ao criar um NOVO orçamento
+        if (!budgetToEdit) {
+            const savedDraft = localStorage.getItem('budgetDraft');
 
-// 1. useEffect DEDICADO a carregar o catálogo UMA ÚNICA VEZ.
+            if (savedDraft) {
+                // 1. Se encontrou um rascunho, a ÚNICA COISA a fazer é abrir o modal.
+                setDraftModalState({ isOpen: true });
+            } else {
+                // 2. Se NÃO encontrou rascunho, aí sim, limpa o formulário silenciosamente.
+                resetForm(false);
+            }
+        }
+        // A dependência em resetForm pode ser removida se você garantir que ela não muda desnecessariamente,
+        // mas por segurança, vamos mantê-la. A lógica interna agora previne o conflito.
+    }, [budgetToEdit, resetForm]);
+
+    // 1. useEffect DEDICADO a carregar o catálogo UMA ÚNICA VEZ.
     useEffect(() => {
         // A trava garante que o catálogo seja buscado apenas na primeira vez que o componente montar.
         if (fetchLock.current === false) {
@@ -189,12 +271,8 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
         }
     }, [db]); // Depende apenas de 'db', que é estável.
 
-
-    // 2. useEffect DEDICADO a reagir a MUDANÇAS (novo orçamento vs. edição).
     useEffect(() => {
-        // SE ESTIVER EDITANDO UM ORÇAMENTO...
         if (budgetToEdit) {
-            // Apenas carrega os dados do orçamento. Não busca o catálogo novamente.
             setEditingId(budgetToEdit.id);
             setBudgetId(budgetToEdit.budgetId || '');
             setClientName(budgetToEdit.clientName || '');
@@ -212,26 +290,56 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
             setBorderTapes(budgetToEdit.borderTapes || []);
             // ... (resto da sua lógica de preenchimento)
 
-        // SE FOR UM ORÇAMENTO NOVO...
+        // Se for um orçamento novo
         } else {
-            // Apenas prepara o formulário para um novo orçamento.
-            resetForm();
-            fetchAndSetNextBudgetId();
-
-            // Configura os padrões usando o catálogo que JÁ FOI CARREGADO pelo primeiro useEffect.
-            if (catalogSheets.length > 0) {
-                setSheets(catalogSheets);
-                setPieceForm(p => ({ ...p, sheetId: catalogSheets[0].id }));
+            if (isDraftRestored.current) {
+            isDraftRestored.current = false;
+            return; 
             }
+            fetchAndSetNextBudgetId(); // A chamada para resetForm() foi removida daqui.
+
+            if (catalogSheets.length > 0) {
+            setSheets(catalogSheets);
+            setPieceForm(p => ({ ...p, sheetId: catalogSheets[0].id }));
+        }
             if (catalogEdgeBands.length > 0) {
                 setBorderTapes([{ ...catalogEdgeBands[0], usedLength: 0 }]);
                 setActiveBorderTapeTab('select');
-            } else {
-                setActiveBorderTapeTab('manual');
-                setBorderTapes([{id: 'manual-tape', name: '', rollPrice: '', rollLength: '', usedLength: 0, isLocal: true}]);
-            }
+        } else {
+            setActiveBorderTapeTab('manual');
+            setBorderTapes([{id: 'manual-tape', name: '', rollPrice: '', rollLength: '', usedLength: 0, isLocal: true}]);
         }
+    }
     }, [budgetToEdit, catalogSheets, catalogEdgeBands, fetchAndSetNextBudgetId, resetForm]);
+
+    // NOVO: useEffect para o AUTOSAVE com debounce
+    useEffect(() => {
+        // Não salvar rascunho se estiver no modo de edição
+        if (editingId) return;
+
+        // Limpa o timeout anterior sempre que um dado muda
+        clearTimeout(autosaveTimeoutRef.current);
+
+        // Define um novo timeout para salvar os dados após 1.5 segundos de inatividade
+        autosaveTimeoutRef.current = setTimeout(() => {
+            const draft = {
+                clientName, clientPhone, projectName, description, profitMargin, 
+                helperCost, deliveryFee, discountPercentage, sheets, pieces, hardware, 
+                unitItems, borderTapes, finalBudgetPrice
+            };
+            localStorage.setItem('budgetDraft', JSON.stringify(draft));
+            // Opcional: Adicione um toast discreto se desejar
+            // toast('Rascunho salvo', { icon: '💾', duration: 1000 });
+        }, 1500); // 1.5 segundos
+
+        // Limpa o timeout quando o componente é desmontado
+        return () => clearTimeout(autosaveTimeoutRef.current);
+
+    }, [
+        clientName, clientPhone, projectName, description, profitMargin, helperCost,
+        deliveryFee, discountPercentage, sheets, pieces, hardware, unitItems,
+        borderTapes, finalBudgetPrice, editingId
+    ]);
     
    const totals = useMemo(() => {
         const margin = 1 + (parseFloat(profitMargin) || 0) / 100;
@@ -272,11 +380,13 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
     
     const closeModal = () => setModalState({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
+        // ALTERADO: A função de salvar agora limpa o rascunho e reseta o form silenciosamente
     const handleSaveBudget = async () => {
         if (!clientName || !projectName) { toast.error('Preencha o nome do cliente e do projeto.'); return; }
         const toastId = toast.loading(editingId ? 'Atualizando orçamento...' : 'Salvando orçamento...');
         
         try {
+            // ... (lógica de salvar no Firebase - sem alteração)
             const cleanedFinalPriceString = String(finalBudgetPrice).replace(',', '.').replace(/[^0-9.]/g, '');
             const finalPriceNumber = parseFloat(cleanedFinalPriceString) || totals.grandTotal;
             const developerCommission = finalPriceNumber * 0.01;
@@ -313,9 +423,9 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
                 toast.success(`Orçamento Nº ${finalBudgetId} salvo com sucesso!`, { id: toastId });
             }
             
-            // VOLTOU AO NORMAL: limpa o formulário e navega
+            // Limpa o rascunho e o formulário (sem toast) antes de navegar
             localStorage.removeItem('budgetDraft');
-            resetForm();
+            resetForm(false); // Reset silencioso
             setCurrentPage('saved');
 
         } catch (error) {
@@ -372,21 +482,29 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
     const handlePieceFormChange = (e) => setPieceForm(p => ({ ...p, [e.target.name]: e.target.value }));
     const toggleEdgeBanding = (edge) => setPieceForm(prev => ({ ...prev, [edge]: !prev[edge] }));
     const handlePieceSubmit = (e) => {
-        e.preventDefault();
-        const isEditing = !!pieceForm.id;
-        setPieces(isEditing ? pieces.map(p => p.id === pieceForm.id ? pieceForm : p) : [...pieces, { ...pieceForm, id: crypto.randomUUID() }]);
-        
-        // Lógica de reset corrigida que mantém a chapa selecionada
-        setPieceForm(prevForm => ({
-            ...initialPieceForm,
-            sheetId: prevForm.sheetId
-        }));
+    e.preventDefault();
 
-        toast.success(isEditing ? 'Peça atualizada!' : 'Peça adicionada!');
-    };
+    // NOVO: Validação para garantir que uma chapa foi selecionada
+    if (!pieceForm.sheetId) {
+        toast.error("Por favor, selecione uma chapa para a peça.");
+        return;
+    }
+
+    const isEditing = !!pieceForm.id;
+    setPieces(isEditing ? pieces.map(p => p.id === pieceForm.id ? pieceForm : p) : [...pieces, { ...pieceForm, id: crypto.randomUUID() }]);
+    
+    setPieceForm(prevForm => ({
+        ...initialPieceForm,
+        sheetId: prevForm.sheetId
+    }));
+
+    toast.success(isEditing ? 'Peça atualizada!' : 'Peça adicionada!');
+};
 
     const editPiece = (pieceToEdit) => {
-    setPieceForm({ ...initialPieceForm, ...pieceToEdit });
+        setPieceForm({ ...initialPieceForm, ...pieceToEdit });
+        // NOVO: Adiciona o scroll suave
+        pieceFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
     const deletePiece = (id, name) => {
         setModalState({ isOpen: true, title: 'Confirmar Exclusão', message: `Tem certeza que deseja excluir a peça "${name}"?`, onConfirm: () => { setPieces(p => p.filter(i => i.id !== id)); closeModal(); toast.success('Peça removida.'); }, confirmButtonClass: 'btn-delete-action' });
@@ -395,6 +513,8 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
     const editSheet = (sheet) => {
         setActiveSheetTab('manual');
         setManualSheetForm(sheet);
+        // NOVO: Adiciona o scroll suave
+        sheetFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
 
     const handleBorderTapeSelection = (e) => {
@@ -477,9 +597,17 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
     };
 
     // Funções específicas que chamam as genéricas
-    const editUnitItem = (item) => editItem(item, setActiveUnitItemTab, setUnitItemForm);
+    const editUnitItem = (item) => {
+        editItem(item, setActiveUnitItemTab, setUnitItemForm);
+        // NOVO: Adiciona o scroll suave
+        unitItemFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
     const deleteUnitItem = (id, name) => deleteItem(id, name, unitItems, setUnitItems, 'Item');
-    const editHardware = (item) => editItem(item, setActiveHardwareTab, setHardwareForm);
+    const editHardware = (item) => {
+    editItem(item, setActiveHardwareTab, setHardwareForm);
+    // NOVO: Adiciona o scroll suave
+    hardwareFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
     const deleteHardware = (id, name) => deleteItem(id, name, hardware, setHardware, 'Ferragem');
 
     // Função para obter o texto de origem do item
@@ -525,7 +653,7 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
                     </div>
                 </div>
 
-<div className="card">
+                <div className="card" ref={sheetFormRef}>
                     <h2 className="section-title">Chapas para este Orçamento</h2>
                     <div className="tabs-container">
                         <button onClick={() => setActiveSheetTab('select')} className={`tab-button ${activeSheetTab === 'select' ? 'active' : ''}`}>Selecionar do Catálogo</button>
@@ -589,11 +717,14 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
                     </div>
                 </div>
                 
-                <div className="card">
+                <div className="card" ref={pieceFormRef}>
                     <h2 className="section-title">Peças de Madeira</h2>
                     <form onSubmit={handlePieceSubmit} className="piece-form">
                         <div className="form-grid-inputs-5">
-                            <div className="form-group"><label>Chapa</label><select name="sheetId" value={pieceForm.sheetId} onChange={handlePieceFormChange}>{sheets.map(s => <option key={s.id} value={s.id}>{s.name} {s.isLocal && '(Local)'}</option>)}</select></div>
+                            <div className="form-group"><label>Chapa</label><select name="sheetId" value={pieceForm.sheetId} onChange={handlePieceFormChange} required>
+                <option value="">-- Selecione uma chapa --</option>
+                {sheets.map(s => <option key={s.id} value={s.id}>{s.name} {s.isLocal && '(Local)'}</option>)}
+            </select></div>
                             <div className="form-group"><label>Nome da Peça</label><input type="text" name="name" value={pieceForm.name} onChange={handlePieceFormChange} placeholder="Ex: Porta" required /></div>
                             <div className="form-group"><label>Comp. (mm)</label><input type="number" name="length" value={pieceForm.length} onChange={handlePieceFormChange} placeholder="Ex: 700" required /></div>
                             <div className="form-group"><label>Larg. (mm)</label><input type="number" name="width" value={pieceForm.width} onChange={handlePieceFormChange} placeholder="Ex: 400" required /></div>
@@ -710,7 +841,7 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
                     </div>
                 </div>
 
-                <div className="card">
+                <div className="card" ref={unitItemFormRef}>
                     <h2 className="section-title">Itens Unitários</h2>
                     <form onSubmit={(e) => handleGenericSubmit(e, unitItemForm, setUnitItemForm, catalogUnitItems, unitItems, setUnitItems, 'Item', activeUnitItemTab)}>
                         <div className="tabs-container">
@@ -755,7 +886,7 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
                     </div>
                 </div>
 
-                <div className="card">
+                <div className="card" ref={hardwareFormRef}>
                     <h2 className="section-title">Ferragens em Caixa</h2>
                     <form onSubmit={(e) => handleGenericSubmit(e, hardwareForm, setHardwareForm, catalogHardware, hardware, setHardware, 'Ferragem', activeHardwareTab)}>
                         <div className="tabs-container">
@@ -850,21 +981,46 @@ const BudgetCalculator = ({ setCurrentPage, budgetToEdit, clearEditingBudget, db
 
                         {/* O NOVO TOTAL FINAL, com desconto aplicado */}
                         <div className="summary-item grand-total">
-                            <span>VALOR TOTAL (COM DESCONTO):</span>
+                            <span>VALOR TOTAL:</span>
                             <span>{formatCurrency(totals.finalValue)}</span>
                         </div>
                     </div>
                     <div className="summary-buttons">
-                        <button onClick={() => { resetForm(); setCurrentPage('home'); }} className="btn btn-back">Cancelar Orçamento</button>
+                        <button onClick={handleCancelBudget} className="btn btn-back">Cancelar Orçamento</button>
                         <button onClick={handleGeneratePdf} className="btn btn-print-open">Gerar PDF</button>
                         <button onClick={handleSaveBudget} className="btn btn-save">{editingId ? 'Atualizar Orçamento' : 'Salvar Orçamento'}</button>
                     </div>
                 </div>
             </main>
 
-            <Modal isOpen={modalState.isOpen} onClose={closeModal} onConfirm={modalState.onConfirm} title={modalState.title} confirmButtonClass={modalState.confirmButtonClass}>
+            <Modal 
+                isOpen={modalState.isOpen} 
+                onClose={closeModal} 
+                onConfirm={modalState.onConfirm} 
+                title={modalState.title} 
+                confirmButtonClass={modalState.confirmButtonClass}
+            >
                 <p>{modalState.message}</p>
             </Modal>
+
+            {/* Modal para confirmar a restauração do rascunho - VERSÃO CORRIGIDA */}
+            <Modal 
+                isOpen={draftModalState.isOpen} 
+                onClose={handleDiscardDraft} 
+                title="Rascunho Encontrado"
+                footer={
+                    <div className="modal-actions">
+                    <button onClick={handleDiscardDraft} className="btn btn-novo">
+                        Começar um Novo
+                    </button>
+                    <button onClick={handleRestoreDraft} className="btn btn-restaurar">
+                        Sim, Restaurar Rascunho
+                    </button>
+                    </div>
+                }
+                >
+                <p>Encontramos um orçamento não salvo. Deseja restaurá-lo ou começar um novo?</p>
+                </Modal>
         </div>
     );
 };

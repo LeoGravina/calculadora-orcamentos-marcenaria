@@ -449,18 +449,212 @@ tbody tr:nth-of-type(even) {
 .dimension-label.vertical { writing-mode: vertical-rl; transform: rotate(180deg); }
 .dimension-label.horizontal { display: block; text-align: center; margin-bottom: 0.5rem; }
 
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 
-/* --- Modal --- */
-.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; animation: fadeIn 0.3s ease; }
-.modal-content { background-color: white; padding: 1.5rem; border-radius: 1rem; box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3); width: 100%; max-width: 450px; animation: slideIn 0.3s ease; margin: 1rem; }
-.modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 1rem; margin-bottom: 1rem; }
-.modal-title { margin: 0; font-size: 1.25rem; font-weight: 600; }
-.modal-close-btn { background: none; border: none; font-size: 1.8rem; font-weight: 300; line-height: 1; cursor: pointer; color: #6b7280; }
-.modal-body { margin-bottom: 1.5rem; color: #4b5563; }
-.modal-footer { display: flex; justify-content: flex-end; gap: 1rem; }
-.btn-delete-action { background-color: #dc2626; }
-.btn-delete-action:hover { background-color: #b91c1c; }
+@keyframes slideIn {
+  from { transform: translateY(-20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
 
+/* ========================================= */
+/* VARIÁVEIS DE COR (Fácil de personalizar)  */
+/* ========================================= */
+:root {
+  --primary-color: #007bff;      /* Azul para ações principais (salvar, confirmar) */
+  --primary-hover-color: #0056b3;
+  --secondary-color: #4d5a65;    /* Cinza para ações secundárias (cancelar) */
+  --secondary-hover-color: #486379;
+  --danger-color: #dc3545;       /* Vermelho para ações de perigo (excluir) */
+  --danger-hover-color: #c82333;
+  --light-gray-color: #f8f9fa;   /* Fundo para botões muito secundários */
+  --border-color: #dee2e6;      /* Cor das bordas internas do modal */
+  --text-color: #212529;
+  --text-secondary-color: #495057;
+  --modal-bg-color: #ffffff;
+  --overlay-bg-color: rgba(0, 0, 0, 0.5);
+}
+
+/* ========================================= */
+/* ESTILOS GERAIS DO MODAL                   */
+/* ========================================= */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: var(--overlay-bg-color);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+/* Aplique esta classe ao overlay no seu componente quando isOpen for true */
+/* Ex: className={`modal-overlay ${isOpen ? 'is-open' : ''}`} */
+.modal-overlay.is-open {
+  opacity: 1;
+  visibility: visible;
+}
+
+.modal-content {
+  background-color: var(--modal-bg-color);
+  padding: 24px;
+  border-radius: 12px;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15);
+  width: 90%;
+  max-width: 500px;
+  transform: scale(0.95) translateY(10px);
+  transition: transform 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+}
+
+.modal-overlay.is-open .modal-content {
+    transform: scale(1) translateY(0);
+}
+
+/* ========================================= */
+/* SEÇÕES INTERNAS DO MODAL                  */
+/* ========================================= */
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.modal-title {
+  font-size: 1.5rem; /* 24px */
+  font-weight: 600;
+  color: var(--text-color);
+  margin: 0;
+}
+
+.modal-close-icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--secondary-color);
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.modal-close-icon-btn:hover {
+  background-color: var(--light-gray-color);
+  color: var(--text-color);
+}
+
+.modal-close-icon-btn svg {
+  width: 24px;
+  height: 24px;
+}
+
+.modal-body {
+  color: var(--text-secondary-color);
+  font-size: 1rem; /* 16px */
+  line-height: 1.6;
+  margin-bottom: 24px;
+}
+
+/* Remove a margem do último parágrafo para não criar espaço extra */
+.modal-body p:last-child {
+    margin-bottom: 0;
+}
+
+.modal-footer {
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+/* ========================================= */
+/* ESTILOS DOS BOTÕES (AÇÕES)                */
+/* ========================================= */
+.modal-actions {
+  display: flex;
+  justify-content: flex-end; /* Alinha botões à direita */
+  gap: 12px; /* Espaço entre os botões */
+}
+
+/* Estilo base para todos os botões */
+.btn {
+  padding: 10px 20px;
+  font-size: 1rem;
+  font-weight: 500;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+.btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* --- BOTÕES PADRÃO (do primeiro modal) --- */
+
+/* Botão de Cancelar (Secundário) */
+.btn-secondary {
+  background-color: var(--primary-color);
+  color: #fff;
+  border-color: var(--border-color);
+}
+.btn-secondary:hover {
+  background-color: var(--primary-hover-color);
+}
+
+/* Botão de Confirmar/Salvar (Padrão Primário) */
+.btn-save {
+  background-color: var(--primary-color);
+  color: #fff;
+}
+.btn-save:hover {
+  background-color: var(--primary-hover-color);
+}
+
+/* Botão de Excluir (Variação de perigo) */
+.btn-delete-action {
+  background-color: var(--danger-color);
+  color: #fff;
+}
+.btn-delete-action:hover {
+  background-color: var(--danger-hover-color);
+}
+
+
+/* --- BOTÕES CUSTOMIZADOS (do modal de rascunho) --- */
+
+/* Botão "Começar um Novo" */
+.btn-novo {
+  background-color: var(--light-gray-color);
+  color: var(--text-secondary-color);
+  border: 1px solid var(--border-color);
+}
+.btn-novo:hover {
+  background-color: #e2e6ea;
+}
+
+/* Botão "Restaurar Rascunho" */
+.btn-restaurar {
+  background-color: var(--primary-color);
+  color: #fff;
+}
+.btn-restaurar:hover {
+  background-color: var(--primary-hover-color);
+}
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slideIn { from { transform: translateY(-30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
