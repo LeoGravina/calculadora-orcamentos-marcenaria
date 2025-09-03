@@ -69,7 +69,6 @@ const CuttingPlanCanvas = ({ cuttingPlan }) => {
                 const pieceY = currentY + piece.y * SCALE;
                 const pieceWidth = (piece.placedLength || piece.originalLength) * SCALE;
                 const pieceHeight = (piece.placedWidth || piece.originalWidth) * SCALE;
-                const isRotated = piece.placedLength === piece.originalWidth;
 
                 // 4. [MELHORIA] Cores consistentes baseadas no ID da peça
                 // Gera uma cor única e estável para cada peça, em vez de uma cor aleatória
