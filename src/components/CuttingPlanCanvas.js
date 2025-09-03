@@ -3,7 +3,6 @@ import React, { useRef, useEffect, useState } from 'react';
 // Constantes movidas para fora do useEffect para melhor performance e organização
 const SCALE = 0.15; // Ajuste a escala conforme necessário
 const PADDING = 20;
-const TEXT_THRESHOLD = 50; // Limite mínimo para desenhar o texto completo
 
 const CuttingPlanCanvas = ({ cuttingPlan }) => {
     const canvasRef = useRef(null);
