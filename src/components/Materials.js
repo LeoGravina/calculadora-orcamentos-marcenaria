@@ -1,56 +1,16 @@
-// NOVO: Importar o useMemo
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { collection, getDocs, addDoc, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { EditIcon, TrashIcon } from './icons';
 import { formatCurrency } from '../utils/helpers';
+// ADICIONADO: maskMeasure e unmaskNumber
+import { maskCurrency, unmaskMoney, maskMeasure, unmaskNumber } from '../utils/masks'; 
 import Modal from './Modal';
 
-const MaterialForm = ({ formState, setFormState, onSubmit, labels, title, gridCols }) => {
-    const handleChange = (e) => {
-        const { name, value } = e.target;
-        setFormState(prev => ({ ...prev, [name]: value }));
-    };
-
-    const handleFormSubmit = (e) => {
-        e.preventDefault();
-        onSubmit(formState);
-    };
-
-    return (
-        <>
-            <h3 className="subsection-title">{title.plural}</h3>
-            <form onSubmit={handleFormSubmit}>
-                <div className={`form-grid-inputs-${gridCols || Object.keys(labels).length}`}>
-                    {Object.keys(labels).map(key => (
-                        <div className="form-group" key={key}>
-                            <label>{labels[key].label}</label>
-                            <input
-                                type={labels[key].type || 'text'}
-                                step="0.01"
-                                name={key}
-                                value={formState[key] || ''}
-                                onChange={handleChange}
-                                placeholder={labels[key].placeholder}
-                                required
-                            />
-                        </div>
-                    ))}
-                </div>
-                <button type="submit" className={`btn form-submit-button ${formState.id ? 'btn-save' : 'btn-add'}`}>
-                    {formState.id ? 'Salvar Alterações' : '+ Adicionar ao Catálogo'}
-                </button>
-            </form>
-        </>
-    );
-};
-
-
 const Materials = ({ db, setCurrentPage }) => {
-    // Estados para as listas de materiais
     const [sheets, setSheets] = useState([]);
     const [edgeBands, setEdgeBands] = useState([]);
-    const [unitaryItems, setUnitaryItems] = useState([]);
+    const [unitaryItems, setUnitaryItems] = useState([]); 
     const [hardwareBoxes, setHardwareBoxes] = useState([]);
     
     const initialSheetForm = { id: null, name: '', price: '', length: '', width: '' };
@@ -64,11 +24,11 @@ const Materials = ({ db, setCurrentPage }) => {
     const [hardwareBoxForm, setHardwareBoxForm] = useState(initialHardwareBoxForm);
 
     const [loading, setLoading] = useState(true);
-    const [modalState, setModalState] = useState({ isOpen: false, title: '', message: '', onConfirm: () => {} });
     const [activeTab, setActiveTab] = useState('sheets');
+    
+    const [actionModal, setActionModal] = useState({ isOpen: false, item: null, type: '' });
+    const [deleteModal, setDeleteModal] = useState({ isOpen: false, item: null });
 
-    // CORREÇÃO DEFINITIVA: Usando useMemo para evitar que a referência da coleção seja recriada a cada renderização.
-    // Isso quebra o loop infinito.
     const materialsCollectionRef = useMemo(() => collection(db, "materials"), [db]);
 
     const fetchMaterials = useCallback(async () => {
@@ -81,175 +41,252 @@ const Materials = ({ db, setCurrentPage }) => {
             setEdgeBands(allMaterials.filter(item => item.type === 'edge_band'));
             setUnitaryItems(allMaterials.filter(item => item.type === 'unitary_item'));
             setHardwareBoxes(allMaterials.filter(item => item.type === 'hardware_box'));
-            
-        } catch (error) {
-            toast.error("Falha ao carregar os materiais.");
-        } finally {
-            setLoading(false);
+        } catch (error) { 
+            console.error(error);
+            toast.error("Erro ao carregar materiais."); 
+        } finally { 
+            setLoading(false); 
         }
-    }, [materialsCollectionRef]); // Agora 'materialsCollectionRef' é uma dependência estável.
+    }, [materialsCollectionRef]);
 
-    useEffect(() => {
-        fetchMaterials();
-    }, [fetchMaterials]);
+    useEffect(() => { fetchMaterials(); }, [fetchMaterials]);
 
-    const handleFormSubmit = async (formData, type, formFields, singularTitle) => {
-        const requiredFields = { ...formFields };
-        delete requiredFields.id;
-        if (Object.keys(requiredFields).some(key => !formData[key])) {
-            toast.error("Por favor, preencha todos os campos.");
-            return;
-        }
-
-        const isEditing = !!formData.id;
-        const toastId = toast.loading(isEditing ? `Atualizando ${singularTitle}...` : `Adicionando ${singularTitle}...`);
-
+    // --- SALVAR (LIMPEZA DOS DADOS) ---
+    const handleFormSubmit = async (e, formData, type, setForm, initialForm, title) => {
+        e.preventDefault();
+        const toastId = toast.loading('Salvando...');
         try {
             const dataToSave = { ...formData, type };
-            Object.keys(dataToSave).forEach(key => {
-                if (key !== 'id' && key !== 'name' && key !== 'type') {
-                    dataToSave[key] = parseFloat(dataToSave[key]);
-                }
-            });
 
-            if (isEditing) {
+            // 1. Limpa Preços (R$ 1.000,00 -> 1000.00)
+            if (dataToSave.price) dataToSave.price = unmaskMoney(dataToSave.price);
+            if (dataToSave.rollPrice) dataToSave.rollPrice = unmaskMoney(dataToSave.rollPrice);
+            if (dataToSave.unitPrice) dataToSave.unitPrice = unmaskMoney(dataToSave.unitPrice);
+            if (dataToSave.boxPrice) dataToSave.boxPrice = unmaskMoney(dataToSave.boxPrice);
+
+            // 2. Limpa Medidas e Quantidades (1.000 mm -> 1000)
+            // Usamos unmaskNumber para tirar o sufixo e os pontos
+            if (dataToSave.length) dataToSave.length = unmaskNumber(dataToSave.length);
+            if (dataToSave.width) dataToSave.width = unmaskNumber(dataToSave.width);
+            if (dataToSave.rollLength) dataToSave.rollLength = unmaskNumber(dataToSave.rollLength);
+            if (dataToSave.boxQty) dataToSave.boxQty = unmaskNumber(dataToSave.boxQty);
+
+            if (formData.id) {
                 await updateDoc(doc(db, "materials", formData.id), dataToSave);
             } else {
                 delete dataToSave.id;
                 await addDoc(materialsCollectionRef, dataToSave);
             }
-            
-            toast.success(`${singularTitle} ${isEditing ? 'atualizado(a)!' : 'adicionado(a)!'}`, { id: toastId });
-            if (type === 'sheet') setSheetForm(initialSheetForm);
-            if (type === 'edge_band') setEdgeBandForm(initialEdgeBandForm);
-            if (type === 'unitary_item') setUnitaryItemForm(initialUnitaryItemForm);
-            if (type === 'hardware_box') setHardwareBoxForm(initialHardwareBoxForm);
-            
+            toast.success(`${title} salvo!`, { id: toastId });
+            setForm(initialForm);
             fetchMaterials();
-        } catch (error) {
-            toast.error("Erro ao salvar.", { id: toastId });
-        }
+        } catch (error) { toast.error("Erro ao salvar.", { id: toastId }); }
     };
 
-    const editMaterial = (material) => {
-        // Popula o formulário correto (esta parte já estava certa)
-        if (material.type === 'sheet') setSheetForm(material);
-        if (material.type === 'edge_band') setEdgeBandForm(material);
-        if (material.type === 'unitary_item') setUnitaryItemForm(material);
-        if (material.type === 'hardware_box') setHardwareBoxForm(material);
+    // --- PREPARAR EDIÇÃO (APLICA MÁSCARAS) ---
+    const handleEditClick = (item, type) => {
+        setActionModal({ isOpen: false, item: null, type: '' });
         
-        let tabNameToActivate;
-        switch (material.type) {
-            case 'sheet':
-                tabNameToActivate = 'sheets';
-                break;
-            case 'edge_band':
-                tabNameToActivate = 'edgeBands'; // Nome corrigido
-                break;
-            case 'unitary_item':
-                tabNameToActivate = 'unitaryItems'; // Nome corrigido
-                break;
-            case 'hardware_box':
-                tabNameToActivate = 'hardwareBoxes'; // Nome corrigido
-                break;
-            default:
-                // Valor padrão para segurança
-                tabNameToActivate = 'sheets';
-        }
-        setActiveTab(tabNameToActivate);
-        
-        // Rola a página para o topo
-        window.scrollTo(0, 0);
-    };
-    const closeModal = () => setModalState({ isOpen: false, title: '', message: '', onConfirm: () => {} });
+        let itemToEdit = { ...item };
 
-    const handleDeleteConfirm = async (id) => {
-        const toastId = toast.loading('Excluindo item...');
+        // Máscara de Preço
+        if (itemToEdit.price) itemToEdit.price = maskCurrency(itemToEdit.price.toFixed(2));
+        if (itemToEdit.rollPrice) itemToEdit.rollPrice = maskCurrency(itemToEdit.rollPrice.toFixed(2));
+        if (itemToEdit.unitPrice) itemToEdit.unitPrice = maskCurrency(itemToEdit.unitPrice.toFixed(2));
+        if (itemToEdit.boxPrice) itemToEdit.boxPrice = maskCurrency(itemToEdit.boxPrice.toFixed(2));
+
+        // Máscara de Medidas e Qtd (Ao carregar para editar, já adiciona o sufixo)
+        if (itemToEdit.length) itemToEdit.length = maskMeasure(itemToEdit.length, 'mm');
+        if (itemToEdit.width) itemToEdit.width = maskMeasure(itemToEdit.width, 'mm');
+        if (itemToEdit.rollLength) itemToEdit.rollLength = maskMeasure(itemToEdit.rollLength, 'm');
+        if (itemToEdit.boxQty) itemToEdit.boxQty = maskMeasure(itemToEdit.boxQty, 'un');
+
+        if (type === 'sheets') setSheetForm(itemToEdit);
+        if (type === 'edgeBands') setEdgeBandForm(itemToEdit);
+        if (type === 'unitaryItems') setUnitaryItemForm(itemToEdit);
+        if (type === 'hardwareBoxes') setHardwareBoxForm(itemToEdit);
+        
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    const handleDeleteClick = () => {
+        const item = actionModal.item;
+        setActionModal({ isOpen: false, item: null, type: '' });
+        setTimeout(() => setDeleteModal({ isOpen: true, item }), 100);
+    };
+
+    const handleDeleteConfirm = async () => {
+        const toastId = toast.loading('Excluindo...');
         try {
-            await deleteDoc(doc(db, "materials", id));
+            await deleteDoc(doc(db, "materials", deleteModal.item.id));
             toast.success('Item removido!', { id: toastId });
-            closeModal();
+            setDeleteModal({ isOpen: false, item: null });
             fetchMaterials();
-        } catch (error) {
-            toast.error("Erro ao excluir.", { id: toastId });
-        }
+        } catch (error) { toast.error("Erro ao excluir.", { id: toastId }); }
     };
-    
-    const deleteMaterial = (id, name) => {
-        setModalState({
-            isOpen: true,
-            title: 'Confirmar Exclusão',
-            message: `Tem certeza que deseja excluir "${name}" do seu catálogo?`,
-            onConfirm: () => handleDeleteConfirm(id),
-            confirmButtonClass: 'btn-delete-action'
-        });
-    };
-
-    const NoMaterialsMessage = () => (
-        <div className="no-materials-message">
-            <p>Ainda não tem nenhum material cadastrado aqui.</p>
-        </div>
-    );
 
     return (
         <main className="main-content">
             <div className="card">
                 <div className="card-header-with-button">
                     <h2 className="section-title">Catálogo de Materiais</h2>
-                    <button onClick={() => setCurrentPage('home')} className="btn btn-secondary btn-small-back">
-                        Voltar à Página Inicial
-                    </button>
+                    <button onClick={() => setCurrentPage('home')} className="btn btn-secondary btn-small-back">Voltar</button>
                 </div>
                 
                 <div className="tabs-container">
                     <button onClick={() => setActiveTab('sheets')} className={`tab-button ${activeTab === 'sheets' ? 'active' : ''}`}>Chapas</button>
-                    <button onClick={() => setActiveTab('edgeBands')} className={`tab-button ${activeTab === 'edgeBands' ? 'active' : ''}`}>Fitas de Borda</button>
-                    <button onClick={() => setActiveTab('unitaryItems')} className={`tab-button ${activeTab === 'unitaryItems' ? 'active' : ''}`}>Itens Unitários</button>
-                    <button onClick={() => setActiveTab('hardwareBoxes')} className={`tab-button ${activeTab === 'hardwareBoxes' ? 'active' : ''}`}>Ferragens (Caixa)</button>
+                    <button onClick={() => setActiveTab('edgeBands')} className={`tab-button ${activeTab === 'edgeBands' ? 'active' : ''}`}>Fitas</button>
+                    <button onClick={() => setActiveTab('unitaryItems')} className={`tab-button ${activeTab === 'unitaryItems' ? 'active' : ''}`}>Itens</button>
+                    <button onClick={() => setActiveTab('hardwareBoxes')} className={`tab-button ${activeTab === 'hardwareBoxes' ? 'active' : ''}`}>Ferragens</button>
                 </div>
 
-                <div className="tab-content">
-                    {activeTab === 'sheets' && <MaterialForm formState={sheetForm} setFormState={setSheetForm} onSubmit={(data) => handleFormSubmit(data, 'sheet', initialSheetForm, 'Chapa')} labels={{ name: { label: 'Nome da Chapa', placeholder: 'Ex: MDF Branco 18mm' }, price: { label: 'Preço (R$)', placeholder: 'Ex: 350.00', type: 'number' }, length: { label: 'Comp. (mm)', placeholder: 'Ex: 2750', type: 'number' }, width: { label: 'Larg. (mm)', placeholder: 'Ex: 1850', type: 'number' } }} title={{ singular: 'Chapa', plural: 'Chapas de Madeira' }} gridCols={4} />}
-                    {activeTab === 'edgeBands' && <MaterialForm formState={edgeBandForm} setFormState={setEdgeBandForm} onSubmit={(data) => handleFormSubmit(data, 'edge_band', initialEdgeBandForm, 'Fita de Borda')} labels={{ name: { label: 'Nome da Fita', placeholder: 'Ex: Branco TX 22mm' }, rollPrice: { label: 'Preço do Rolo (R$)', placeholder: 'Ex: 75.00', type: 'number' }, rollLength: { label: 'Metros no Rolo', placeholder: 'Ex: 50', type: 'number' } }} title={{ singular: 'Fita de Borda', plural: 'Fitas de Borda' }} gridCols={3} />}
-                    {activeTab === 'unitaryItems' && <MaterialForm formState={unitaryItemForm} setFormState={setUnitaryItemForm} onSubmit={(data) => handleFormSubmit(data, 'unitary_item', initialUnitaryItemForm, 'Item Unitário')} labels={{ name: { label: 'Nome do Item', placeholder: 'Ex: Puxador Concha' }, unitPrice: { label: 'Preço por Unidade (R$)', placeholder: 'Ex: 15.00', type: 'number' } }} title={{ singular: 'Item Unitário', plural: 'Itens Unitários (Puxadores, Dobradiças, etc.)' }} gridCols={2} />}
-                    {activeTab === 'hardwareBoxes' && <MaterialForm formState={hardwareBoxForm} setFormState={setHardwareBoxForm} onSubmit={(data) => handleFormSubmit(data, 'hardware_box', initialHardwareBoxForm, 'Caixa de Ferragem')} labels={{ name: { label: 'Nome da Ferragem', placeholder: 'Ex: Parafuso 3.5x40' }, boxPrice: { label: 'Preço da Caixa (R$)', placeholder: 'Ex: 45.00', type: 'number' }, boxQty: { label: 'Unidades na Caixa', placeholder: 'Ex: 500', type: 'number' } }} title={{ singular: 'Caixa de Ferragem', plural: 'Ferragens Vendidas por Caixa' }} gridCols={3} />}
-                </div>
-
-                {loading ? <p>Carregando materiais...</p> : (
-                    <div className="table-container">
-                        {activeTab === 'sheets' && (sheets.length > 0 ? (
-                            <table>
-                                <thead><tr><th className="th-name">Nome</th><th>Preço</th><th>Medidas</th><th className="th-actions">Ações</th></tr></thead>
-                                <tbody>{sheets.map(s => (<tr key={s.id}><td>{s.name}</td><td>{formatCurrency(s.price)}</td><td>{s.length}mm x {s.width}mm</td><td className="actions"><button onClick={() => editMaterial(s)} className="icon-button edit" title="Editar"><EditIcon /></button><button onClick={() => deleteMaterial(s.id, s.name)} className="icon-button delete" title="Excluir"><TrashIcon /></button></td></tr>))}</tbody>
-                            </table>
-                        ) : <NoMaterialsMessage />)}
-
-                        {activeTab === 'edgeBands' && (edgeBands.length > 0 ? (
-                             <table>
-                                <thead><tr><th className="th-name">Nome</th><th>Preço do Rolo</th><th>Metragem</th><th>Preço/m</th><th className="th-actions">Ações</th></tr></thead>
-                                <tbody>{edgeBands.map(b => (<tr key={b.id}><td>{b.name}</td><td>{formatCurrency(b.rollPrice)}</td><td>{b.rollLength} m</td><td>{formatCurrency(b.rollPrice / b.rollLength)}</td><td className="actions"><button onClick={() => editMaterial(b)} className="icon-button edit" title="Editar"><EditIcon /></button><button onClick={() => deleteMaterial(b.id, b.name)} className="icon-button delete" title="Excluir"><TrashIcon /></button></td></tr>))}</tbody>
-                            </table>
-                        ) : <NoMaterialsMessage />)}
-
-                        {activeTab === 'unitaryItems' && (unitaryItems.length > 0 ? (
-                             <table>
-                                <thead><tr><th className="th-name">Nome</th><th>Preço Unitário</th><th className="th-actions">Ações</th></tr></thead>
-                                <tbody>{unitaryItems.map(i => (<tr key={i.id}><td>{i.name}</td><td>{formatCurrency(i.unitPrice)}</td><td className="actions"><button onClick={() => editMaterial(i)} className="icon-button edit" title="Editar"><EditIcon /></button><button onClick={() => deleteMaterial(i.id, i.name)} className="icon-button delete" title="Excluir"><TrashIcon /></button></td></tr>))}</tbody>
-                            </table>
-                        ) : <NoMaterialsMessage />)}
-
-                        {activeTab === 'hardwareBoxes' && (hardwareBoxes.length > 0 ? (
-                             <table>
-                                <thead><tr><th className="th-name">Nome</th><th>Preço da Caixa</th><th>Unidades/Caixa</th><th>Preço/Unid.</th><th className="th-actions">Ações</th></tr></thead>
-                                <tbody>{hardwareBoxes.map(h => (<tr key={h.id}><td>{h.name}</td><td>{formatCurrency(h.boxPrice)}</td><td>{h.boxQty}</td><td>{formatCurrency(h.boxPrice / h.boxQty)}</td><td className="actions"><button onClick={() => editMaterial(h)} className="icon-button edit" title="Editar"><EditIcon /></button><button onClick={() => deleteMaterial(h.id, h.name)} className="icon-button delete" title="Excluir"><TrashIcon /></button></td></tr>))}</tbody>
-                            </table>
-                        ) : <NoMaterialsMessage />)}
-                    </div>
+                {/* --- 1. CHAPAS --- */}
+                {activeTab === 'sheets' && (
+                    <form onSubmit={(e) => handleFormSubmit(e, sheetForm, 'sheet', setSheetForm, initialSheetForm, 'Chapa')}>
+                        <div className="form-grid-inputs-4">
+                            <div className="form-group">
+                                <label>Nome</label>
+                                <input value={sheetForm.name} onChange={e => setSheetForm({...sheetForm, name:e.target.value})} placeholder="Ex: MDF Branco" required />
+                            </div>
+                            <div className="form-group">
+                                <label>Preço (R$)</label>
+                                <input type="tel" value={sheetForm.price} onChange={e => setSheetForm({...sheetForm, price: maskCurrency(e.target.value)})} placeholder="R$ 0,00" required />
+                            </div>
+                            <div className="form-group">
+                                <label>Comp. (mm)</label>
+                                {/* MÁSCARA MM */}
+                                <input 
+                                    type="tel" 
+                                    value={sheetForm.length} 
+                                    onChange={e => setSheetForm({...sheetForm, length: maskMeasure(e.target.value, 'mm')})} 
+                                    placeholder="2750 mm" 
+                                    required 
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label>Larg. (mm)</label>
+                                {/* MÁSCARA MM */}
+                                <input 
+                                    type="tel" 
+                                    value={sheetForm.width} 
+                                    onChange={e => setSheetForm({...sheetForm, width: maskMeasure(e.target.value, 'mm')})} 
+                                    placeholder="1850 mm" 
+                                    required 
+                                />
+                            </div>
+                        </div>
+                        <button type="submit" className="btn btn-add">{sheetForm.id ? 'Salvar Alteração' : '+ Adicionar ao Catálogo'}</button>
+                    </form>
                 )}
+
+                {/* --- 2. FITAS --- */}
+                {activeTab === 'edgeBands' && (
+                    <form onSubmit={(e) => handleFormSubmit(e, edgeBandForm, 'edge_band', setEdgeBandForm, initialEdgeBandForm, 'Fita')}>
+                        <div className="form-grid-inputs-3">
+                            <div className="form-group"><label>Nome</label><input value={edgeBandForm.name} onChange={e => setEdgeBandForm({...edgeBandForm, name:e.target.value})} placeholder="Ex: Fita Branca" required /></div>
+                            <div className="form-group">
+                                <label>Preço Rolo</label>
+                                <input type="tel" value={edgeBandForm.rollPrice} onChange={e => setEdgeBandForm({...edgeBandForm, rollPrice: maskCurrency(e.target.value)})} placeholder="R$ 0,00" required />
+                            </div>
+                            <div className="form-group">
+                                <label>Metros</label>
+                                {/* MÁSCARA METROS (m) */}
+                                <input 
+                                    type="tel" 
+                                    value={edgeBandForm.rollLength} 
+                                    onChange={e => setEdgeBandForm({...edgeBandForm, rollLength: maskMeasure(e.target.value, 'm')})} 
+                                    placeholder="50 m" 
+                                    required 
+                                />
+                            </div>
+                        </div>
+                        <button type="submit" className="btn btn-add">{edgeBandForm.id ? 'Salvar Alteração' : '+ Adicionar Fita'}</button>
+                    </form>
+                )}
+
+                {/* --- 3. ITENS --- */}
+                {activeTab === 'unitaryItems' && (
+                    <form onSubmit={(e) => handleFormSubmit(e, unitaryItemForm, 'unitary_item', setUnitaryItemForm, initialUnitaryItemForm, 'Item')}>
+                        <div className="grid-2-cols">
+                            <div className="form-group"><label>Nome</label><input value={unitaryItemForm.name} onChange={e => setUnitaryItemForm({...unitaryItemForm, name:e.target.value})} placeholder="Ex: Puxador" required /></div>
+                            <div className="form-group">
+                                <label>Preço Unit.</label>
+                                <input type="tel" value={unitaryItemForm.unitPrice} onChange={e => setUnitaryItemForm({...unitaryItemForm, unitPrice: maskCurrency(e.target.value)})} placeholder="R$ 0,00" required />
+                            </div>
+                        </div>
+                        <button type="submit" className="btn btn-add">{unitaryItemForm.id ? 'Salvar Alteração' : '+ Adicionar Item'}</button>
+                    </form>
+                )}
+
+                {/* --- 4. FERRAGENS --- */}
+                {activeTab === 'hardwareBoxes' && (
+                    <form onSubmit={(e) => handleFormSubmit(e, hardwareBoxForm, 'hardware_box', setHardwareBoxForm, initialHardwareBoxForm, 'Ferragem')}>
+                        <div className="form-grid-inputs-3">
+                            <div className="form-group"><label>Nome</label><input value={hardwareBoxForm.name} onChange={e => setHardwareBoxForm({...hardwareBoxForm, name:e.target.value})} placeholder="Ex: Parafuso" required /></div>
+                            <div className="form-group">
+                                <label>Preço Caixa</label>
+                                <input type="tel" value={hardwareBoxForm.boxPrice} onChange={e => setHardwareBoxForm({...hardwareBoxForm, boxPrice: maskCurrency(e.target.value)})} placeholder="R$ 0,00" required />
+                            </div>
+                            <div className="form-group">
+                                <label>Qtd Caixa</label>
+                                {/* MÁSCARA UNIDADES (un) */}
+                                <input 
+                                    type="tel" 
+                                    value={hardwareBoxForm.boxQty} 
+                                    onChange={e => setHardwareBoxForm({...hardwareBoxForm, boxQty: maskMeasure(e.target.value, 'un')})} 
+                                    placeholder="1000 un" 
+                                    required 
+                                />
+                            </div>
+                        </div>
+                        <button type="submit" className="btn btn-add">{hardwareBoxForm.id ? 'Salvar Alteração' : '+ Adicionar Ferragem'}</button>
+                    </form>
+                )}
+
+                <div className="table-container" style={{marginTop: '2rem'}}>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Nome</th>
+                                {activeTab === 'sheets' && <><th>Preço</th><th>Medidas</th></>}
+                                {activeTab === 'edgeBands' && <><th>Preço Rolo</th><th>Metros</th></>}
+                                {activeTab === 'unitaryItems' && <th>Preço Unit.</th>}
+                                {activeTab === 'hardwareBoxes' && <><th>Preço Caixa</th><th>Qtd/Caixa</th></>}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {(activeTab === 'sheets' ? sheets : activeTab === 'edgeBands' ? edgeBands : activeTab === 'unitaryItems' ? unitaryItems : hardwareBoxes).map(item => (
+                                <tr key={item.id} onClick={() => setActionModal({ isOpen: true, item, type: activeTab })} title="Clique para editar/excluir">
+                                    <td>{item.name}</td>
+                                    {activeTab === 'sheets' && <>
+                                        <td>{formatCurrency(item.price)}</td>
+                                        <td>{item.length} x {item.width} mm</td>
+                                    </>}
+                                    {activeTab === 'edgeBands' && <>
+                                        <td>{formatCurrency(item.rollPrice)}</td>
+                                        <td>{item.rollLength} m</td>
+                                    </>}
+                                    {activeTab === 'unitaryItems' && <td>{formatCurrency(item.unitPrice)}</td>}
+                                    {activeTab === 'hardwareBoxes' && <>
+                                        <td>{formatCurrency(item.boxPrice)}</td>
+                                        <td>{item.boxQty} un</td>
+                                    </>}
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
             </div>
-            
-            <Modal isOpen={modalState.isOpen} onClose={closeModal} onConfirm={modalState.onConfirm} title={modalState.title} confirmButtonClass={modalState.confirmButtonClass}>
-                <p>{modalState.message}</p>
+
+            <Modal isOpen={actionModal.isOpen} onClose={() => setActionModal({ isOpen: false, item: null, type: '' })} title={`Opções: ${actionModal.item?.name}`} footer={<button onClick={() => setActionModal({ isOpen: false, item: null, type: '' })} className="btn btn-secondary" style={{width:'100%'}}>Fechar</button>}>
+                <div className="action-menu-grid">
+                    <button onClick={() => handleEditClick(actionModal.item, actionModal.type)} className="btn-action-menu edit"><EditIcon /> <span>Editar Item</span></button>
+                    <button onClick={handleDeleteClick} className="btn-action-menu delete"><TrashIcon /> <span>Excluir do Catálogo</span></button>
+                </div>
+            </Modal>
+
+            <Modal isOpen={deleteModal.isOpen} onClose={() => setDeleteModal({ isOpen: false, item: null })} title="Confirmar Exclusão" footer={<div className="modal-actions-grid"><button onClick={() => setDeleteModal({ isOpen: false, item: null })} className="btn-modal-cancel">Cancelar</button><button onClick={handleDeleteConfirm} className="btn-modal-confirm">Confirmar</button></div>}>
+                <div className="delete-msg">Tem certeza que deseja excluir <strong>{deleteModal.item?.name}</strong> do catálogo?</div>
             </Modal>
         </main>
     );

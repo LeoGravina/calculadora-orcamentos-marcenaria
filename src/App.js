@@ -4,7 +4,7 @@ import { getFirestore } from 'firebase/firestore';
 import { Toaster } from 'react-hot-toast';
 
 // Importação dos componentes
-import HomePage from './components/HomePage'; // VOLTOU A IMPORTAR
+import HomePage from './components/HomePage';
 import BudgetCalculator from './components/BudgetCalculator';
 import SavedBudgets from './components/SavedBudgets';
 import Materials from './components/Materials'
@@ -42,18 +42,21 @@ export default function App() {
     const [currentPage, setCurrentPage] = useState('home');
     const [budgetToEdit, setBudgetToEdit] = useState(null);
 
+    // --- FUNÇÃO PARA NOVO ORÇAMENTO (LIMPA DADOS ANTIGOS) ---
+    const handleNewBudget = () => {
+        setBudgetToEdit(null); // <--- O SEGREDO ESTÁ AQUI: Limpa qualquer edição pendente
+        setCurrentPage('calculator');
+    };
+
     const handleEditBudget = (budget) => {
         setBudgetToEdit(budget);
         setCurrentPage('calculator');
     };
 
-    // --- ADIÇÃO DA NOVA FUNÇÃO DE DUPLICAR AQUI ---
     const handleDuplicateBudget = (budget) => {
-        // Cria uma cópia do orçamento e adiciona a flag 'isDuplicate'
         const budgetCopy = { ...budget, isDuplicate: true };
-        delete budgetCopy.id; // Remove o ID do documento antigo para criar um novo
-        
-        setBudgetToEdit(budgetCopy); // Envia a cópia para a calculadora
+        delete budgetCopy.id; 
+        setBudgetToEdit(budgetCopy);
         setCurrentPage('calculator');
     };
 
@@ -95,6 +98,8 @@ export default function App() {
                 return <HomePage
                     setCurrentPage={setCurrentPage}
                     logoDaEmpresa={logoDaEmpresa}
+                    handleNewBudget={handleNewBudget}
+                    db={db}
                 />;
         }
     };

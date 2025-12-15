@@ -1,216 +1,259 @@
 import React, { useRef, useEffect, useState } from 'react';
 
-// Constantes movidas para fora do useEffect para melhor performance e organização
-const SCALE = 0.15; // Ajuste a escala conforme necessário
-const PADDING = 20;
-
 const CuttingPlanCanvas = ({ cuttingPlan }) => {
     const canvasRef = useRef(null);
-    const [selectedPiece, setSelectedPiece] = useState(null);
+    const containerRef = useRef(null);
+    
+    // Estado de Zoom e Pan
+    const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
+    const [isDragging, setIsDragging] = useState(false);
+    const [startPan, setStartPan] = useState({ x: 0, y: 0 });
 
+    // Configurações Visuais
+    const COLORS = {
+        sheetBg: '#ffffff',
+        sheetBorder: '#333333',
+        pieceFill: '#e0e7ff', // Azul clarinho suave
+        pieceBorder: '#3730a3', // Azul índigo forte para borda
+        text: '#1f2937',
+        selectedFill: '#fcd34d', // Amarelo destaque
+        wastePattern: '#f3f4f6' // Cinza claro
+    };
+
+    // Desenha o Canvas sempre que o plano ou o zoom mudar
     useEffect(() => {
         const canvas = canvasRef.current;
+        if (!canvas || !cuttingPlan) return;
         const ctx = canvas.getContext('2d');
 
-        if (!cuttingPlan || !cuttingPlan.usedSheets || cuttingPlan.usedSheets.length === 0) {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            return;
-        }
-
-        // Calcula a altura total necessária para o canvas
-        const totalHeight = cuttingPlan.usedSheets.reduce((acc, sheet) => {
-            return acc + sheet.width * SCALE + PADDING * 2;
-        }, 0);
+        // 1. Configurar Tamanho do Canvas (Alta resolução para zoom nítido)
+        // Calculamos o tamanho total necessário para todas as chapas empilhadas
+        const PADDING = 40; // Margem entre chapas
+        const SHEET_MARGIN = 20;
         
-        // Define o tamanho do canvas dinamicamente (largura máxima pode ser fixa ou calculada)
-        canvas.width = 3000 * SCALE; // Ex: Largura máxima de uma chapa padrão
+        let maxWidth = 0;
+        let totalHeight = SHEET_MARGIN;
+
+        cuttingPlan.usedSheets.forEach(sheet => {
+            maxWidth = Math.max(maxWidth, sheet.width);
+            totalHeight += sheet.height + PADDING;
+        });
+
+        // Definimos o tamanho interno do canvas
+        canvas.width = maxWidth + (SHEET_MARGIN * 2);
         canvas.height = totalHeight;
-        
-        // Inicia o desenho
+
+        // 2. Limpar e Aplicar Transformação (Zoom/Pan)
+        // Importante: O clearRect limpa o canvas FÍSICO, não o transformado
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        let currentY = PADDING;
+        ctx.restore();
 
-        cuttingPlan.usedSheets.forEach((sheet, sheetIndex) => {
-            const sheetWidth = sheet.length * SCALE;
-            const sheetHeight = sheet.width * SCALE;
-            const sheetX = PADDING;
+        ctx.save();
+        // Aplica o zoom e movimento
+        ctx.translate(transform.x, transform.y);
+        ctx.scale(transform.scale, transform.scale);
 
-            // 1. Desenha a chapa
-            ctx.strokeStyle = '#333';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(sheetX, currentY, sheetWidth, sheetHeight);
+        // 3. Desenhar Chapas
+        let currentY = SHEET_MARGIN;
+
+        cuttingPlan.usedSheets.forEach((sheet, index) => {
+            // Fundo da Chapa
+            ctx.fillStyle = COLORS.sheetBg;
+            ctx.fillRect(SHEET_MARGIN, currentY, sheet.width, sheet.height);
             
-            ctx.font = '14px Arial';
-            ctx.fillStyle = '#333';
-            ctx.fillText(
-                `Chapa ${sheetIndex + 1}: ${sheet.name} (${sheet.length}x${sheet.width}mm)`, 
-                sheetX + 5,
-                currentY - 5 // Posição um pouco acima da linha
-            );
+            // Desenho do Desperdício (Hachura ou cor sólida suave)
+            ctx.fillStyle = COLORS.wastePattern;
+            ctx.fillRect(SHEET_MARGIN, currentY, sheet.width, sheet.height);
 
-            // 2. [MELHORIA] Visualiza o desperdício (espaços não utilizados)
-            // Isso requer que `cuttingOptimizer` retorne a propriedade `remainingSpaces` em cada chapa.
-            if (sheet.remainingSpaces) {
-                ctx.fillStyle = '#f0f0f0'; // Cinza claro para o desperdício
-                sheet.remainingSpaces.forEach(space => {
-                    ctx.fillRect(
-                        sheetX + space.x * SCALE,
-                        currentY + space.y * SCALE,
-                        space.width * SCALE,
-                        space.height * SCALE
-                    );
-                });
-            }
+            // Borda da Chapa
+            ctx.strokeStyle = COLORS.sheetBorder;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(SHEET_MARGIN, currentY, sheet.width, sheet.height);
 
-            // 3. Desenha as peças na chapa
-            sheet.pieces.forEach((piece, pieceIndex) => {
-                const pieceX = sheetX + piece.x * SCALE;
-                const pieceY = currentY + piece.y * SCALE;
-                const pieceWidth = (piece.placedLength || piece.originalLength) * SCALE;
-                const pieceHeight = (piece.placedWidth || piece.originalWidth) * SCALE;
+            // Título da Chapa
+            ctx.fillStyle = '#000';
+            ctx.font = 'bold 24px Arial';
+            ctx.textAlign = 'left';
+            ctx.fillText(`Chapa ${index + 1} - ${sheet.efficiency}% Aproveitamento`, SHEET_MARGIN, currentY - 10);
 
-                // 4. [MELHORIA] Cores consistentes baseadas no ID da peça
-                // Gera uma cor única e estável para cada peça, em vez de uma cor aleatória
-                const pieceIdSum = (piece.uniqueId || piece.id).split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-                ctx.fillStyle = `hsl(${pieceIdSum % 360}, 70%, 85%)`;
-                ctx.fillRect(pieceX, pieceY, pieceWidth, pieceHeight);
-                ctx.strokeStyle = '#555';
+            // 4. Desenhar Peças
+            sheet.pieces.forEach(piece => {
+                const px = SHEET_MARGIN + piece.x;
+                const py = currentY + piece.y;
+                const pw = piece.placedLength;
+                const ph = piece.placedWidth;
+
+                // Preenchimento
+                ctx.fillStyle = COLORS.pieceFill;
+                ctx.fillRect(px, py, pw, ph);
+
+                // Borda da Peça
+                ctx.strokeStyle = COLORS.pieceBorder;
                 ctx.lineWidth = 1;
-                ctx.strokeRect(pieceX, pieceY, pieceWidth, pieceHeight);
+                ctx.strokeRect(px, py, pw, ph);
 
-            const canDrawDimensionsOnBorders = pieceWidth > 40 && pieceHeight > 40; // Ajuste esses valores conforme a legibilidade
-            const canDrawNameInside = pieceWidth > 60 && pieceHeight > 60; // Para desenhar o nome no centro
-
-            if (canDrawDimensionsOnBorders) {
-                ctx.font = '8px Arial'; // Fonte menor para as bordas
-                ctx.fillStyle = '#000';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-
-                // Dimensões originais da peça (sem a folga para o display)
-                const displayLength = piece.originalLength;
-                const displayWidth = piece.originalWidth;
-
-                // Lado esquerdo (altura)
-                if (pieceHeight > 20) { // Desenha se houver espaço vertical suficiente
-                    ctx.save();
-                    ctx.translate(pieceX + 5, pieceY + pieceHeight / 2); // Levemente à direita da borda esquerda
-                    ctx.rotate(-Math.PI / 2); // Rotaciona 90 graus para texto vertical
-                    ctx.fillText(`${displayWidth}mm`, 0, 0);
-                    ctx.restore();
-                }
-
-                // Lado inferior (comprimento)
-                if (pieceWidth > 20) { // Desenha se houver espaço horizontal suficiente
-                    ctx.fillText(`${displayLength}mm`, pieceX + pieceWidth / 2, pieceY + pieceHeight - 5); // Levemente acima da borda inferior
-                }
-
-                // Nome e ID no centro (se houver espaço)
-                if (canDrawNameInside) {
-                    ctx.font = '10px Arial';
-                    ctx.fillStyle = '#000';
-                    ctx.fillText(piece.name, pieceX + pieceWidth / 2, pieceY + pieceHeight / 2 - 8);
-                    ctx.fillText(`#${pieceIndex + 1}`, pieceX + pieceWidth / 2, pieceY + pieceHeight / 2 + 8);
-                } else {
-                    // Para peças pequenas demais para nome, mas que tem um pouco de espaço, só o ID
-                    const textX = pieceX + pieceWidth / 2;
-                    const textY = pieceY + pieceHeight / 2;
-                    ctx.font = '10px Arial';
+                // Texto (Nome e Dimensões)
+                // Só desenha se a peça for grande o suficiente no zoom atual
+                if (pw * transform.scale > 30 && ph * transform.scale > 20) {
+                    ctx.fillStyle = COLORS.text;
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
                     
-                    ctx.strokeStyle = 'white';
-                    ctx.lineWidth = 2;
-                    ctx.strokeText(`#${pieceIndex + 1}`, textX, textY);
+                    // Ajusta fonte conforme tamanho da peça
+                    const fontSize = Math.min(14, Math.min(pw, ph) / 3);
+                    ctx.font = `${fontSize}px Arial`;
 
-                    ctx.fillStyle = '#000';
-                    ctx.fillText(`#${pieceIndex + 1}`, textX, textY);
-                }
+                    const cx = px + pw / 2;
+                    const cy = py + ph / 2;
 
-            } else {
-                // Caso a peça seja muito pequena para qualquer texto nas bordas, desenha apenas o ID centralizado
-                const textX = pieceX + pieceWidth / 2;
-                const textY = pieceY + pieceHeight / 2;
-                ctx.font = '10px Arial';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                
-                ctx.strokeStyle = 'white';
-                ctx.lineWidth = 2;
-                ctx.strokeText(`#${pieceIndex + 1}`, textX, textY);
-
-                ctx.fillStyle = '#000';
-                ctx.fillText(`#${pieceIndex + 1}`, textX, textY);
-            }
-                
-                // Destaque da peça selecionada
-                if (selectedPiece && selectedPiece.uniqueId === piece.uniqueId) {
-                    ctx.strokeStyle = '#dc2626'; // Vermelho forte para destaque
-                    ctx.lineWidth = 3;
-                    ctx.strokeRect(pieceX, pieceY, pieceWidth, pieceHeight);
+                    // Nome
+                    ctx.fillText(piece.name.substring(0, 10), cx, cy - (fontSize/1.5));
+                    
+                    // Dimensão
+                    ctx.font = `${fontSize * 0.8}px Arial`;
+                    const dimText = `${piece.placedLength}x${piece.placedWidth}`;
+                    ctx.fillText(dimText, cx, cy + (fontSize/1.5));
+                    
+                    // Indicador de Rotação
+                    if (piece.rotated) {
+                        ctx.font = `${fontSize * 0.7}px Arial`;
+                        ctx.fillStyle = '#b91c1c';
+                        ctx.fillText("↻", px + 10, py + 10);
+                    }
                 }
             });
 
-            currentY += sheetHeight + PADDING * 2;
+            currentY += sheet.height + PADDING;
         });
 
-    }, [cuttingPlan, selectedPiece]);
+        ctx.restore();
 
-    // Função para lidar com o clique no canvas
-    const handleCanvasClick = (event) => {
-        const canvas = canvasRef.current;
-        const rect = canvas.getBoundingClientRect();
-        const mouseX = event.clientX - rect.left;
-        const mouseY = event.clientY - rect.top;
+    }, [cuttingPlan, transform]);
 
-        let foundPiece = null;
-        let currentY = PADDING;
+    // === CONTROLADORES DE ZOOM E PAN ===
 
-        if (!cuttingPlan || !cuttingPlan.usedSheets) return;
-
-        for (const sheet of cuttingPlan.usedSheets) {
-            const sheetX = PADDING;
-            const sheetY = currentY;
-            const sheetWidth = sheet.length * SCALE;
-            const sheetHeight = sheet.width * SCALE;
-
-            if (mouseX >= sheetX && mouseX <= sheetX + sheetWidth && mouseY >= sheetY && mouseY <= sheetY + sheetHeight) {
-                for (const piece of sheet.pieces) {
-                    const pieceX = sheetX + piece.x * SCALE;
-                    const pieceY = sheetY + piece.y * SCALE;
-                    const pieceWidth = (piece.placedLength || piece.originalLength) * SCALE;
-                    const pieceHeight = (piece.placedWidth || piece.originalWidth) * SCALE;
-
-                    if (mouseX >= pieceX && mouseX <= pieceX + pieceWidth && mouseY >= pieceY && mouseY <= pieceY + pieceHeight) {
-                        foundPiece = piece;
-                        break; // Para de procurar em outras peças da mesma chapa
-                    }
-                }
-            }
-            if (foundPiece) break; // Para de procurar em outras chapas
-
-            currentY += sheetHeight + PADDING * 2;
-        }
-
-        setSelectedPiece(foundPiece);
+    const handleWheel = (e) => {
+        e.preventDefault();
+        const scaleAmount = -e.deltaY * 0.001;
+        const newScale = Math.min(Math.max(0.1, transform.scale + scaleAmount), 5);
+        
+        // Zoom focado no mouse seria ideal, mas zoom central é mais simples e robusto para mobile agora
+        setTransform(prev => ({
+            ...prev,
+            scale: newScale
+        }));
     };
 
+    const handleMouseDown = (e) => {
+        setIsDragging(true);
+        setStartPan({ x: e.clientX - transform.x, y: e.clientY - transform.y });
+    };
+
+    const handleMouseMove = (e) => {
+        if (!isDragging) return;
+        setTransform(prev => ({
+            ...prev,
+            x: e.clientX - startPan.x,
+            y: e.clientY - startPan.y
+        }));
+    };
+
+    const handleMouseUp = () => setIsDragging(false);
+
+    // Resetar visualização
+    const resetView = () => {
+        // Tenta ajustar o zoom para caber a largura da chapa na tela
+        if (cuttingPlan && cuttingPlan.usedSheets.length > 0 && containerRef.current) {
+            const sheetW = cuttingPlan.usedSheets[0].width;
+            const containerW = containerRef.current.clientWidth;
+            const fitScale = (containerW / sheetW) * 0.9; // 90% da largura
+            setTransform({ x: 20, y: 50, scale: fitScale });
+        } else {
+            setTransform({ x: 0, y: 0, scale: 0.2 }); // Fallback
+        }
+    };
+
+    // Auto-fit inicial
+    useEffect(() => {
+        resetView();
+    }, [cuttingPlan]);
+
     return (
-        <>
-            <canvas
-                ref={canvasRef}
-                onClick={handleCanvasClick}
-                style={{ cursor: 'pointer', maxWidth: '100%' }}
-            />
-            {selectedPiece && (
-                <div className="selected-piece-details" style={{marginTop: '1rem', padding: '1rem', border: '1px solid #ccc', borderRadius: '8px'}}>
-                    <h4>Detalhes da Peça Selecionada:</h4>
-                    <p><strong>Nome:</strong> {selectedPiece.name}</p>
-                    <p><strong>Medidas Originais:</strong> {selectedPiece.originalLength}x{selectedPiece.originalWidth}mm</p>
-                    <p><strong>Quantidade no Projeto:</strong> {selectedPiece.qty}</p>
-                </div>
-            )}
-        </>
+        <div 
+            ref={containerRef}
+            style={{ 
+                width: '100%', 
+                height: '500px', 
+                overflow: 'hidden', 
+                border: '1px solid #ddd', 
+                borderRadius: '8px',
+                position: 'relative',
+                background: '#f9f9f9',
+                cursor: isDragging ? 'grabbing' : 'grab'
+            }}
+            onWheel={handleWheel}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+            // Eventos Touch para celular (Básico)
+            onTouchStart={(e) => {
+                const touch = e.touches[0];
+                setIsDragging(true);
+                setStartPan({ x: touch.clientX - transform.x, y: touch.clientY - transform.y });
+            }}
+            onTouchMove={(e) => {
+                if (!isDragging) return;
+                const touch = e.touches[0];
+                // Previne scroll da página enquanto arrasta o canvas
+                // e.preventDefault(); // Cuidado: pode bloquear scroll da página inteira se não usado bem
+                setTransform(prev => ({
+                    ...prev,
+                    x: touch.clientX - startPan.x,
+                    y: touch.clientY - startPan.y
+                }));
+            }}
+            onTouchEnd={() => setIsDragging(false)}
+        >
+            <div style={{
+                position: 'absolute', 
+                top: 10, 
+                right: 10, 
+                zIndex: 10, 
+                display: 'flex', 
+                gap: '5px'
+            }}>
+                <button 
+                    onClick={resetView}
+                    style={{
+                        background: 'rgba(0,0,0,0.6)', 
+                        color: 'white', 
+                        border: 'none', 
+                        padding: '5px 10px', 
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                    }}
+                >
+                    Resetar Zoom
+                </button>
+            </div>
+            
+            <p style={{
+                position: 'absolute', 
+                bottom: 10, 
+                left: 10, 
+                background: 'rgba(255,255,255,0.8)', 
+                padding: '2px 5px', 
+                fontSize: '0.8rem',
+                pointerEvents: 'none'
+            }}>
+                Use pinça ou rolete para Zoom. Arraste para mover.
+            </p>
+
+            <canvas ref={canvasRef} style={{ display: 'block' }} />
+        </div>
     );
 };
 
