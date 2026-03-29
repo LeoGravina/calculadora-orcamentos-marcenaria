@@ -119,6 +119,7 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
     }, [db]);
 
     // === CARREGAR ORÇAMENTO PARA EDIÇÃO ===
+   // === CARREGAR ORÇAMENTO PARA EDIÇÃO ===
     useEffect(() => {
         if (budgetToEdit) {
             setEditingId(budgetToEdit.id);
@@ -133,7 +134,8 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
             setDiscountPercentage(budgetToEdit.discountPercentage || 0);
             setFinalBudgetPrice(budgetToEdit.finalBudgetPrice ? maskCurrency(budgetToEdit.finalBudgetPrice.toFixed(2)) : '');
             
-            setSheets(budgetToEdit.sheets?.length > 0 ? budgetToEdit.sheets : catalogSheets);
+            // Carrega os itens salvos do orçamento
+            setSheets(budgetToEdit.sheets || []);
             setPieces(budgetToEdit.pieces || []);
             setHardware(budgetToEdit.hardware || []);
             setUnitItems(budgetToEdit.unitItems || []);
@@ -147,9 +149,25 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
                 } catch (e) { console.error(e); }
             };
             fetchId();
-            setSheets(catalogSheets);
+            setSheets([]); // Começa vazio para novos orçamentos
         }
-    }, [budgetToEdit, catalogSheets, db]);
+    }, [budgetToEdit, db]);
+
+    // === SINCRONIZAR NOVOS ITENS DO CATÁLOGO (A MÁGICA) ===
+    useEffect(() => {
+        if (catalogSheets.length > 0) {
+            setSheets(prevSheets => {
+                const merged = [...prevSheets];
+                catalogSheets.forEach(catSheet => {
+                    // Se a chapa do catálogo não existir na lista do orçamento, adiciona ela!
+                    if (!merged.find(s => s.id === catSheet.id)) {
+                        merged.push(catSheet);
+                    }
+                });
+                return merged;
+            });
+        }
+    }, [catalogSheets]);
 
     // === CÁLCULOS BLINDADOS (NOVA MATEMÁTICA SEPARADA) ===
     const totals = useMemo(() => {
