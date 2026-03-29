@@ -7,7 +7,6 @@ import ClientForm from './budget/ClientForm';
 import PieceManager from './budget/PieceManager';
 import SheetManager from './budget/SheetManager';
 import ExtrasManager from './budget/ExtrasManager';
-import Modal from './Modal';
 import CuttingPlanCanvas from './CuttingPlanCanvas';
 
 // Utils
@@ -18,7 +17,6 @@ import { qrCodeBase64 } from '../utils/qrCodeImage';
 import { cuttingOptimizer } from '../utils/cuttingOptimizer';
 
 // === TYPESCRIPT INTERFACES ===
-// Garantindo que Sheet aceita qualquer propriedade extra do Firebase e se alinha com o SheetManager
 export interface Sheet { 
     id: string | null; 
     name: string; 
@@ -153,7 +151,7 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
         }
     }, [budgetToEdit, catalogSheets, db]);
 
-    // === CÁLCULOS BLINDADOS ===
+    // === CÁLCULOS BLINDADOS (NOVA MATEMÁTICA SEPARADA) ===
     const totals = useMemo(() => {
         const safeParseFloat = (val: string | number | undefined | null) => {
             if (typeof val === 'number') return val;
@@ -168,39 +166,34 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
         const cleanDiscount = unmaskNumber(discountPercentage);
         const cleanFinalPrice = unmaskMoney(finalBudgetPrice); 
 
-        const marginMultiplier = 1 + (cleanMargin || 0) / 100;
-        
-        const totalPiecesPrice = pieces.reduce((acc, p) => { 
+        // 1. CUSTO REAL DOS MATERIAIS (Sem lucro)
+        const rawPiecesCost = pieces.reduce((acc, p) => { 
             const s = sheets.find(sheet => sheet.id === p.sheetId); 
             if (!s) return acc;
-
             let sLength = safeParseFloat(s.length);
             let sWidth = safeParseFloat(s.width);
             const sPrice = safeParseFloat(s.price);
-
             if (sLength > 0 && sLength < 100) sLength *= 1000;
             if (sWidth > 0 && sWidth < 100) sWidth *= 1000;
-
             const sArea = sLength * sWidth; 
             if (sArea <= 0) return acc; 
-
             const ppsmm = sPrice / sArea; 
             const pArea = safeParseFloat(p.length) * safeParseFloat(p.width); 
-            let price = pArea * ppsmm * safeParseFloat(p.qty) * marginMultiplier;
             
-            p.totalCost = price; 
-            return acc + price; 
+            const cost = pArea * ppsmm * safeParseFloat(p.qty);
+            p.totalCost = cost * (1 + (cleanMargin / 100)); 
+            return acc + cost; 
         }, 0);
 
-        const totalHardwarePrice = hardware.reduce((acc, i) => {
-            const cost = (safeParseFloat(i.boxPrice) / (safeParseFloat(i.boxQty) || 1) * safeParseFloat(i.usedQty) * marginMultiplier);
-            i.totalCost = cost;
+        const rawHardwareCost = hardware.reduce((acc, i) => {
+            const cost = (safeParseFloat(i.boxPrice) / (safeParseFloat(i.boxQty) || 1) * safeParseFloat(i.usedQty));
+            i.totalCost = cost * (1 + (cleanMargin / 100));
             return acc + cost;
         }, 0);
 
-        const totalUnitItemsPrice = unitItems.reduce((acc, i) => {
-            const cost = (safeParseFloat(i.unitPrice) * safeParseFloat(i.qty) * marginMultiplier);
-            i.totalCost = cost;
+        const rawUnitItemsCost = unitItems.reduce((acc, i) => {
+            const cost = (safeParseFloat(i.unitPrice) * safeParseFloat(i.qty));
+            i.totalCost = cost * (1 + (cleanMargin / 100));
             return acc + cost;
         }, 0);
         
@@ -213,28 +206,43 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
             return acc + (perim * safeParseFloat(p.qty));
         }, 0);
         
-        let totalBorderTapePrice = 0;
+        let rawBorderTapeCost = 0;
         if (borderTapes.length > 0) {
             const tape = borderTapes[0];
             tape.usedLength = (totalTapeMm / 1000).toFixed(2);
-            totalBorderTapePrice = (parseFloat(String(tape.usedLength)) * (safeParseFloat(tape.rollPrice) / (safeParseFloat(tape.rollLength) || 1))) * marginMultiplier;
-            tape.totalCost = totalBorderTapePrice;
+            rawBorderTapeCost = (parseFloat(String(tape.usedLength)) * (safeParseFloat(tape.rollPrice) / (safeParseFloat(tape.rollLength) || 1)));
+            tape.totalCost = rawBorderTapeCost * (1 + (cleanMargin / 100));
         }
 
-        const subtotalMaterialsPrice = totalPiecesPrice + totalHardwarePrice + totalUnitItemsPrice + totalBorderTapePrice;
-        const rawMaterialCost = marginMultiplier > 0 ? subtotalMaterialsPrice / marginMultiplier : 0;
+        // --- MATEMÁTICA CLARA ---
+        const totalRawMaterialCost = rawPiecesCost + rawHardwareCost + rawUnitItemsCost + rawBorderTapeCost;
         const extrasCost = (cleanHelper||0) + (cleanDelivery||0);
-        const totalProjectCost = rawMaterialCost + extrasCost;
-        const grandTotal = subtotalMaterialsPrice + extrasCost;
+
+        // O que realmente sai do bolso do seu pai (Custo Total do Projeto)
+        const totalProjectCost = totalRawMaterialCost + extrasCost; 
+
+        // Aplica o lucro APENAS em cima da madeira/ferragens
+        const materialComLucro = totalRawMaterialCost * (1 + (cleanMargin / 100));
         
+        // Preço sugerido pelo sistema (Material com lucro + Frete/Ajudante secos)
+        const grandTotal = materialComLucro + extrasCost; 
+        
+        // Se a caixa "Valor Fechado" tiver algo digitado, sobrepõe tudo. Se não, usa o sugerido.
         const valorBase = cleanFinalPrice || grandTotal;
         const finalValue = valorBase - (valorBase * (cleanDiscount/100));
+        
+        // O lucro limpo é o que o cliente pagou de fato, menos o que custou pra fazer
         const estimatedProfit = finalValue - totalProjectCost;
 
         return { 
-            grandTotal, subtotal: subtotalMaterialsPrice, finalValue, 
-            finalHelperCost: cleanHelper||0, finalDeliveryFee: cleanDelivery||0,
-            totalProjectCost, estimatedProfit
+            grandTotal, 
+            subtotal: materialComLucro, 
+            rawMaterialCost: totalRawMaterialCost,
+            finalHelperCost: cleanHelper||0, 
+            finalDeliveryFee: cleanDelivery||0,
+            totalProjectCost, 
+            estimatedProfit,
+            finalValue
         };
     }, [pieces, sheets, profitMargin, helperCost, deliveryFee, finalBudgetPrice, discountPercentage, hardware, unitItems, borderTapes]);
 
@@ -299,7 +307,7 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
         <div className="flex flex-col items-center pb-24 w-full bg-gray-50 min-h-screen">
             
             <header className="flex flex-col items-center pt-8 pb-6 px-4 w-full bg-white shadow-sm mb-6 rounded-b-3xl border-b border-gray-100">
-                <h1 className="text-2xl font-extrabold text-gray-900 mb-1">
+                <h1 className="text-2xl font-extrabold text-gray-900 mb-1 tracking-tight">
                     {editingId ? `Orçamento #${budgetId}` : `Novo Orçamento`}
                 </h1>
                 <p className="text-gray-500 font-medium text-sm mb-4">Marcenaria MVMóveis</p>
@@ -313,17 +321,35 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
 
             <main className="flex flex-col gap-6 w-full max-w-3xl px-4">
                 
-                <ClientForm {...{clientName, setClientName, clientPhone, setClientPhone, projectName, setProjectName, profitMargin, setProfitMargin, helperCost, setHelperCost, deliveryFee, setDeliveryFee, description, setDescription}} />
+                <ClientForm 
+                    clientName={clientName} setClientName={setClientName} 
+                    clientPhone={clientPhone} setClientPhone={setClientPhone} 
+                    projectName={projectName} setProjectName={setProjectName} 
+                    profitMargin={profitMargin} setProfitMargin={setProfitMargin} 
+                    helperCost={helperCost} setHelperCost={setHelperCost} 
+                    deliveryFee={deliveryFee} setDeliveryFee={setDeliveryFee} 
+                    description={description} setDescription={setDescription} 
+                />
                 
                 <SheetManager sheets={sheets} setSheets={setSheets} catalogSheets={catalogSheets} />
                 
-                <PieceManager pieces={pieces as any} setPieces={setPieces as any} sheets={sheets as any} pieceForm={pieceForm as any} setPieceForm={setPieceForm as any} initialPieceForm={initialPieceForm as any} onEdit={(piece: any) => setPieceForm(piece)} onDelete={(id: string) => setPieces(p => p.filter(i => i.id !== id))} />
+                <PieceManager 
+                    pieces={pieces as any} setPieces={setPieces as any} 
+                    sheets={sheets as any} pieceForm={pieceForm as any} 
+                    setPieceForm={setPieceForm as any} initialPieceForm={initialPieceForm as any} 
+                    onEdit={(piece: any) => setPieceForm(piece)} 
+                    onDelete={(id: string) => setPieces(p => p.filter(i => i.id !== id))} 
+                />
                 
-                <ExtrasManager {...{borderTapes, setBorderTapes, catalogEdgeBands, unitItems, setUnitItems, catalogUnitItems, hardware, setHardware, catalogHardware}} />
+                <ExtrasManager 
+                    borderTapes={borderTapes} setBorderTapes={setBorderTapes} catalogEdgeBands={catalogEdgeBands} 
+                    unitItems={unitItems} setUnitItems={setUnitItems} catalogUnitItems={catalogUnitItems} 
+                    hardware={hardware} setHardware={setHardware} catalogHardware={catalogHardware} 
+                />
 
                 {/* --- PLANO DE CORTE --- */}
-                <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 flex flex-col gap-4">
-                    <h2 className="text-xl font-extrabold text-gray-800">Plano de Corte</h2>
+                <div className="bg-white p-5 md:p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col gap-4">
+                    <h2 className="text-xl font-extrabold text-gray-800 tracking-tight">Plano de Corte</h2>
                     <button 
                         onClick={handlePlan} 
                         disabled={isLoadingPlan} 
@@ -338,60 +364,70 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
                     )}
                 </div>
 
-                {/* --- RESUMO FINANCEIRO --- */}
-                <div className="bg-white p-6 rounded-3xl shadow-lg shadow-gray-200/50 border border-gray-100 flex flex-col gap-4 relative overflow-hidden">
-                    <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-amber-400 to-orange-500"></div>
+                {/* --- RESUMO FINANCEIRO À PROVA DE CONFUSÃO --- */}
+                <div className="bg-white p-6 md:p-7 rounded-3xl shadow-lg shadow-gray-200/50 border border-gray-100 flex flex-col gap-4 relative overflow-hidden mt-2">
+                    <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-blue-400 via-blue-600 to-emerald-500"></div>
                     
-                    <h2 className="text-2xl font-black text-gray-900 mb-2">Resumo Financeiro</h2>
+                    <h2 className="text-2xl font-black text-gray-950 mb-3 tracking-tighter">Resumo Financeiro</h2>
                     
-                    <div className="flex flex-col gap-3">
-                        <div className="flex justify-between items-center text-gray-600 font-medium">
-                            <span>Materiais & Ferragens:</span>
-                            <span className="text-gray-900 font-bold">{formatCurrency(totals.subtotal)}</span>
-                        </div>
-                        <div className="flex justify-between items-center text-gray-600 font-medium">
-                            <span>Ajudante + Frete:</span>
-                            <span className="text-gray-900 font-bold">{formatCurrency(totals.finalHelperCost + totals.finalDeliveryFee)}</span>
-                        </div>
-                        
-                        <hr className="border-gray-100 my-1" />
-                        
-                        <div className="bg-slate-50 border border-dashed border-slate-300 rounded-2xl p-4 my-2 flex flex-col gap-3">
-                            <div className="flex justify-between items-center">
-                                <span className="flex items-center text-sm font-bold text-slate-600 uppercase tracking-wide">
-                                    <span className="w-2.5 h-2.5 rounded-full bg-red-500 mr-2"></span> Custo Real
-                                </span>
-                                <strong className="text-red-600 text-lg">{formatCurrency(totals.totalProjectCost)}</strong>
+                    <div className="flex flex-col gap-4">
+                        {/* 1. O PASSO A PASSO DO CÁLCULO */}
+                        <div className="bg-gray-50 p-5 rounded-2xl border border-gray-200 flex flex-col gap-3">
+                            <span className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1 block">Extrato do Projeto:</span>
+                            
+                            <div className="flex justify-between items-center text-gray-700 font-medium">
+                                <span>1. Custo Real (Balcão Madeireira):</span>
+                                <span className="text-red-600 font-bold">{formatCurrency(totals.rawMaterialCost)}</span>
                             </div>
-                            <div className="flex justify-between items-center">
-                                <span className="flex items-center text-sm font-bold text-slate-600 uppercase tracking-wide">
-                                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 mr-2"></span> Lucro Limpo
-                                </span>
-                                <strong className="text-emerald-600 text-lg">{formatCurrency(totals.estimatedProfit)}</strong>
+                            
+                            <div className="flex justify-between items-center text-gray-700 font-medium">
+                                <span>2. Materiais com Lucro ({profitMargin}%):</span>
+                                <span className="text-gray-900 font-bold">{formatCurrency(totals.subtotal)}</span>
+                            </div>
+                            
+                            <div className="flex justify-between items-center text-gray-700 font-medium border-b border-gray-200 pb-3">
+                                <span>3. Ajudante + Frete:</span>
+                                <span className="text-gray-900 font-bold">{formatCurrency(totals.finalHelperCost + totals.finalDeliveryFee)}</span>
+                            </div>
+                            
+                            <div className="flex justify-between items-center pt-1">
+                                <span className="font-extrabold text-blue-700 uppercase tracking-tight text-sm">Valor Sugerido ao Cliente:</span>
+                                <span className="font-black text-blue-700 text-lg">{formatCurrency(totals.grandTotal)}</span>
                             </div>
                         </div>
                         
-                        <div className="flex flex-col items-center bg-blue-50 p-5 rounded-2xl border border-blue-100 mt-2">
-                            <span className="text-blue-800 font-bold uppercase tracking-wider text-xs mb-1">Valor Final a Cobrar</span>
-                            <span className="text-4xl font-black text-blue-700">{formatCurrency(totals.finalValue)}</span>
+                        {/* 2. VISÃO DO CLIENTE */}
+                        <div className="flex flex-col items-center bg-gradient-to-br from-blue-600 to-blue-700 p-6 rounded-2xl border border-blue-200 shadow-lg shadow-blue-500/30">
+                            <span className="text-blue-100 font-bold uppercase tracking-wider text-sm mb-1 text-center">Valor Final para o Cliente</span>
+                            <span className="text-5xl font-black text-white tracking-tighter tabular-nums text-center break-all">{formatCurrency(totals.finalValue)}</span>
+                        </div>
+                        
+                        {/* 3. VISÃO DO DONO (LUCRO LIMPO) */}
+                        <div className="flex flex-col items-center bg-emerald-50 border-2 border-dashed border-emerald-300 rounded-2xl p-5 mt-1">
+                            <span className="text-emerald-800 font-bold uppercase tracking-wider text-xs mb-1 text-center">Seu Lucro Líquido Real (Limpo)</span>
+                            <span className="text-3xl font-extrabold text-emerald-700 tracking-tight tabular-nums text-center">{formatCurrency(totals.estimatedProfit)}</span>
                         </div>
                     </div>
 
-                    <div className="mt-4 flex flex-col gap-2">
-                        <label className="text-sm font-bold text-gray-500 uppercase tracking-wide">Fechar negócio por (Opcional)</label>
-                        <input 
-                            type="tel" 
-                            className="w-full h-14 px-5 text-lg font-bold text-gray-900 bg-gray-50 border border-gray-300 rounded-2xl focus:ring-4 focus:ring-amber-500/20 focus:border-amber-500 transition-all outline-none" 
-                            value={finalBudgetPrice} 
-                            onChange={e => setFinalBudgetPrice(maskCurrency(e.target.value))} 
-                            placeholder="R$ 0,00" 
-                        />
-                        <p className="text-xs text-gray-400 text-center mt-1">Digite um valor para arredondar ou dar desconto.</p>
+                    {/* Input de Negociação Manual */}
+                    <div className="mt-5 flex flex-col gap-2 border-t-2 border-gray-50 pt-4">
+                        <label className="text-sm font-bold text-gray-500 uppercase tracking-wide">Forçar Preço Final (Opcional)</label>
+                        <div className="relative w-full">
+                            <input 
+                                type="tel" 
+                                className="w-full h-14 px-5 pr-12 text-lg font-bold text-gray-950 bg-amber-50 border-2 border-amber-200 rounded-2xl focus:ring-4 focus:ring-amber-500/20 focus:border-amber-500 transition-all outline-none" 
+                                value={finalBudgetPrice} 
+                                onChange={e => setFinalBudgetPrice(maskCurrency(e.target.value))} 
+                                placeholder="R$ 0,00" 
+                            />
+                             <span className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-amber-500 select-none pointer-events-none">R$</span>
+                        </div>
+                        <p className="text-xs text-gray-400 text-center mt-1">Para dar um desconto ou arredondar, digite o novo valor acima. Isso irá ignorar o cálculo automático.</p>
                     </div>
                 </div>
 
                 <div className="flex flex-col gap-3 mt-4 mb-10">
-                    <button onClick={handleSave} className="w-full py-4 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-extrabold rounded-2xl shadow-lg shadow-blue-500/30 transition-all active:scale-[0.98] text-lg">
+                    <button onClick={handleSave} className="w-full py-4 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-extrabold rounded-2xl shadow-lg shadow-emerald-500/30 transition-all active:scale-[0.98] text-lg">
                         {editingId ? 'Atualizar Orçamento' : 'Salvar Orçamento'}
                     </button>
                     <div className="grid grid-cols-2 gap-3">

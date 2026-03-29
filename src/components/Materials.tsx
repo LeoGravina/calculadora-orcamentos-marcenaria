@@ -1,272 +1,309 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { collection, getDocs, addDoc, doc, updateDoc, deleteDoc, Firestore } from 'firebase/firestore';
+import React, { useState, useEffect } from 'react';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Firestore } from 'firebase/firestore';
 import toast from 'react-hot-toast';
-import { EditIcon, TrashIcon } from './icons';
+import { maskCurrency, maskMeasure, unmaskMoney, unmaskNumber } from '../utils/masks';
 import { formatCurrency } from '../utils/helpers';
-import { maskCurrency, unmaskMoney, maskMeasure, unmaskNumber } from '../utils/masks'; 
-import Modal from './Modal';
-
-// === TYPESCRIPT: Interfaces dos Materiais ===
-interface MaterialBase { id: string | null; name: string; type?: string; }
-interface Sheet extends MaterialBase { price: string | number; length: string | number; width: string | number; }
-interface EdgeBand extends MaterialBase { rollPrice: string | number; rollLength: string | number; }
-interface UnitaryItem extends MaterialBase { unitPrice: string | number; }
-interface HardwareBox extends MaterialBase { boxPrice: string | number; boxQty: string | number; }
+import { EditIcon, TrashIcon } from './icons';
 
 interface MaterialsProps {
-    db: Firestore | null;
     setCurrentPage: (page: string) => void;
+    db: Firestore | null;
 }
 
-const Materials: React.FC<MaterialsProps> = ({ db, setCurrentPage }) => {
-    // Estados de Listagem
-    const [sheets, setSheets] = useState<Sheet[]>([]);
-    const [edgeBands, setEdgeBands] = useState<EdgeBand[]>([]);
-    const [unitaryItems, setUnitaryItems] = useState<UnitaryItem[]>([]); 
-    const [hardwareBoxes, setHardwareBoxes] = useState<HardwareBox[]>([]);
+type TabType = 'sheet' | 'edge_band' | 'unitary_item' | 'hardware_box';
+
+export default function Materials({ setCurrentPage, db }: MaterialsProps) {
+    const [activeTab, setActiveTab] = useState<TabType>('sheet');
+    const [materials, setMaterials] = useState<any[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
     
-    // Estados de Formulário
-    const initialSheetForm: Sheet = { id: null, name: '', price: '', length: '', width: '' };
-    const initialEdgeBandForm: EdgeBand = { id: null, name: '', rollPrice: '', rollLength: '' };
-    const initialUnitaryItemForm: UnitaryItem = { id: null, name: '', unitPrice: '' };
-    const initialHardwareBoxForm: HardwareBox = { id: null, name: '', boxPrice: '', boxQty: '' };
+    // Estado do formulário
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [form, setForm] = useState<any>({
+        name: '', price: '', length: '', width: '', rollPrice: '', rollLength: '', unitPrice: '', boxPrice: '', boxQty: ''
+    });
 
-    const [sheetForm, setSheetForm] = useState<Sheet>(initialSheetForm);
-    const [edgeBandForm, setEdgeBandForm] = useState<EdgeBand>(initialEdgeBandForm);
-    const [unitaryItemForm, setUnitaryItemForm] = useState<UnitaryItem>(initialUnitaryItemForm);
-    const [hardwareBoxForm, setHardwareBoxForm] = useState<HardwareBox>(initialHardwareBoxForm);
-
-    const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'sheets' | 'edgeBands' | 'unitaryItems' | 'hardwareBoxes'>('sheets');
-    
-    // Estados de Modais
-    const [actionModal, setActionModal] = useState<{isOpen: boolean, item: any, type: string}>({ isOpen: false, item: null, type: '' });
-    const [deleteModal, setDeleteModal] = useState<{isOpen: boolean, item: any}>({ isOpen: false, item: null });
-
-    const fetchMaterials = useCallback(async () => {
+    const loadMaterials = async () => {
         if (!db) return;
-        setLoading(true);
+        setIsLoading(true);
         try {
             const querySnapshot = await getDocs(collection(db, "materials"));
-            const allMaterials = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
-            
-            setSheets(allMaterials.filter(item => item.type === 'sheet'));
-            setEdgeBands(allMaterials.filter(item => item.type === 'edge_band'));
-            setUnitaryItems(allMaterials.filter(item => item.type === 'unitary_item'));
-            setHardwareBoxes(allMaterials.filter(item => item.type === 'hardware_box'));
-        } catch (error) { toast.error("Erro ao carregar materiais."); } finally { setLoading(false); }
-    }, [db]);
-
-    useEffect(() => { fetchMaterials(); }, [fetchMaterials]);
-
-    // Lógica de Salvar (Blindada pelo TS)
-    const handleFormSubmit = async (e: React.FormEvent, formData: any, type: string, setForm: Function, initialForm: any, title: string) => {
-        e.preventDefault();
-        if (!db) return;
-        const toastId = toast.loading('Salvando...');
-        try {
-            const dataToSave = { ...formData, type };
-            if (dataToSave.price) dataToSave.price = unmaskMoney(dataToSave.price);
-            if (dataToSave.rollPrice) dataToSave.rollPrice = unmaskMoney(dataToSave.rollPrice);
-            if (dataToSave.unitPrice) dataToSave.unitPrice = unmaskMoney(dataToSave.unitPrice);
-            if (dataToSave.boxPrice) dataToSave.boxPrice = unmaskMoney(dataToSave.boxPrice);
-
-            if (dataToSave.length) dataToSave.length = unmaskNumber(dataToSave.length);
-            if (dataToSave.width) dataToSave.width = unmaskNumber(dataToSave.width);
-            if (dataToSave.rollLength) dataToSave.rollLength = unmaskNumber(dataToSave.rollLength);
-            if (dataToSave.boxQty) dataToSave.boxQty = unmaskNumber(dataToSave.boxQty);
-
-            if (formData.id) {
-                await updateDoc(doc(db, "materials", formData.id), dataToSave);
-            } else {
-                delete dataToSave.id;
-                await addDoc(collection(db, "materials"), dataToSave);
-            }
-            toast.success(`${title} salvo!`, { id: toastId });
-            setForm(initialForm);
-            fetchMaterials();
-        } catch (error) { toast.error("Erro ao salvar.", { id: toastId }); }
+            const items = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setMaterials(items);
+        } catch (error) {
+            toast.error("Erro ao carregar catálogo.");
+        } finally {
+            setIsLoading(false);
+        }
     };
 
-    const handleEditClick = (item: any, type: string) => {
-        setActionModal({ isOpen: false, item: null, type: '' });
-        let itemToEdit = { ...item };
+    useEffect(() => {
+        loadMaterials();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [db]);
 
-        if (itemToEdit.price) itemToEdit.price = maskCurrency(itemToEdit.price.toFixed(2));
-        if (itemToEdit.rollPrice) itemToEdit.rollPrice = maskCurrency(itemToEdit.rollPrice.toFixed(2));
-        if (itemToEdit.unitPrice) itemToEdit.unitPrice = maskCurrency(itemToEdit.unitPrice.toFixed(2));
-        if (itemToEdit.boxPrice) itemToEdit.boxPrice = maskCurrency(itemToEdit.boxPrice.toFixed(2));
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        let val = value;
+        if (['price', 'rollPrice', 'unitPrice', 'boxPrice'].includes(name)) val = maskCurrency(value);
+        if (['length', 'width', 'rollLength', 'boxQty'].includes(name)) val = maskMeasure(value);
+        setForm((prev: any) => ({ ...prev, [name]: val }));
+    };
 
-        if (itemToEdit.length) itemToEdit.length = maskMeasure(itemToEdit.length, 'mm');
-        if (itemToEdit.width) itemToEdit.width = maskMeasure(itemToEdit.width, 'mm');
-        if (itemToEdit.rollLength) itemToEdit.rollLength = maskMeasure(itemToEdit.rollLength, 'm');
-        if (itemToEdit.boxQty) itemToEdit.boxQty = maskMeasure(itemToEdit.boxQty, 'un');
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!db) return;
+        if (!form.name) return toast.error("O nome é obrigatório.");
 
-        if (type === 'sheets') setSheetForm(itemToEdit);
-        if (type === 'edgeBands') setEdgeBandForm(itemToEdit);
-        if (type === 'unitaryItems') setUnitaryItemForm(itemToEdit);
-        if (type === 'hardwareBoxes') setHardwareBoxForm(itemToEdit);
-        
+        const toastId = toast.loading('Salvando material...');
+        try {
+            let dataToSave: any = { name: form.name, type: activeTab };
+
+            if (activeTab === 'sheet') {
+                dataToSave.price = unmaskMoney(form.price);
+                dataToSave.length = unmaskNumber(form.length);
+                dataToSave.width = unmaskNumber(form.width);
+            } else if (activeTab === 'edge_band') {
+                dataToSave.rollPrice = unmaskMoney(form.rollPrice);
+                dataToSave.rollLength = unmaskNumber(form.rollLength);
+            } else if (activeTab === 'unitary_item') {
+                dataToSave.unitPrice = unmaskMoney(form.unitPrice);
+            } else if (activeTab === 'hardware_box') {
+                dataToSave.boxPrice = unmaskMoney(form.boxPrice);
+                dataToSave.boxQty = unmaskNumber(form.boxQty);
+            }
+
+            if (editingId) {
+                await updateDoc(doc(db, "materials", editingId), dataToSave);
+                toast.success('Material atualizado!', { id: toastId });
+            } else {
+                await addDoc(collection(db, "materials"), dataToSave);
+                toast.success('Material adicionado!', { id: toastId });
+            }
+
+            setForm({ name: '', price: '', length: '', width: '', rollPrice: '', rollLength: '', unitPrice: '', boxPrice: '', boxQty: '' });
+            setEditingId(null);
+            loadMaterials();
+        } catch (error) {
+            toast.error('Erro ao salvar material.', { id: toastId });
+        }
+    };
+
+    const handleEdit = (item: any) => {
+        setEditingId(item.id);
+        setActiveTab(item.type);
+        setForm({
+            name: item.name || '',
+            price: item.price ? maskCurrency(item.price.toFixed(2)) : '',
+            length: item.length ? String(item.length) : '',
+            width: item.width ? String(item.width) : '',
+            rollPrice: item.rollPrice ? maskCurrency(item.rollPrice.toFixed(2)) : '',
+            rollLength: item.rollLength ? String(item.rollLength) : '',
+            unitPrice: item.unitPrice ? maskCurrency(item.unitPrice.toFixed(2)) : '',
+            boxPrice: item.boxPrice ? maskCurrency(item.boxPrice.toFixed(2)) : '',
+            boxQty: item.boxQty ? String(item.boxQty) : ''
+        });
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
-    const handleDeleteConfirm = async () => {
+    const handleDelete = async (id: string) => {
         if (!db) return;
+        if (!window.confirm("Tem certeza que deseja excluir este material do catálogo?")) return;
+        
         const toastId = toast.loading('Excluindo...');
         try {
-            await deleteDoc(doc(db, "materials", deleteModal.item.id));
-            toast.success('Item removido!', { id: toastId });
-            setDeleteModal({ isOpen: false, item: null });
-            fetchMaterials();
-        } catch (error) { toast.error("Erro ao excluir.", { id: toastId }); }
+            await deleteDoc(doc(db, "materials", id));
+            toast.success('Excluído com sucesso.', { id: toastId });
+            loadMaterials();
+        } catch (error) {
+            toast.error('Erro ao excluir.', { id: toastId });
+        }
     };
 
-    // Renderização auxiliar da lista baseada na aba ativa
-    const renderList = () => {
-        const currentData = activeTab === 'sheets' ? sheets : activeTab === 'edgeBands' ? edgeBands : activeTab === 'unitaryItems' ? unitaryItems : hardwareBoxes;
-
-        if (loading) return <p className="text-center py-8 text-gray-500 animate-pulse">Carregando catálogo...</p>;
-        if (currentData.length === 0) return <p className="text-center py-8 text-gray-500">Nenhum item cadastrado nesta categoria.</p>;
-
-        return (
-            <div className="mt-6">
-                {/* --- MOBILE (Cards) --- */}
-                <div className="flex flex-col gap-3 md:hidden">
-                    {currentData.map((item: any) => (
-                        <div key={item.id} onClick={() => setActionModal({ isOpen: true, item, type: activeTab })} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm active:scale-95 transition-transform flex justify-between items-center">
-                            <div className="flex flex-col">
-                                <strong className="text-gray-900 text-lg">{item.name}</strong>
-                                <span className="text-sm text-gray-500 mt-1">
-                                    {activeTab === 'sheets' && `${item.length} x ${item.width} mm`}
-                                    {activeTab === 'edgeBands' && `Rolo de ${item.rollLength}m`}
-                                    {activeTab === 'hardwareBoxes' && `Caixa c/ ${item.boxQty} un`}
-                                </span>
-                            </div>
-                            <div className="text-right">
-                                <span className="font-extrabold text-emerald-600 text-lg">
-                                    {formatCurrency(item.price || item.rollPrice || item.unitPrice || item.boxPrice)}
-                                </span>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-
-                {/* --- DESKTOP (Tabela) --- */}
-                <div className="hidden md:block overflow-hidden border border-gray-200 rounded-xl">
-                    <table className="w-full text-left bg-white">
-                        <thead className="bg-gray-50 text-gray-500 font-bold uppercase text-xs">
-                            <tr>
-                                <th className="p-4 border-b">Nome</th>
-                                <th className="p-4 border-b">Preço</th>
-                                <th className="p-4 border-b text-right">Especificação</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                            {currentData.map((item: any) => (
-                                <tr key={item.id} onClick={() => setActionModal({ isOpen: true, item, type: activeTab })} className="hover:bg-gray-50 cursor-pointer group">
-                                    <td className="p-4 font-bold text-gray-900">{item.name}</td>
-                                    <td className="p-4 text-emerald-600 font-extrabold">{formatCurrency(item.price || item.rollPrice || item.unitPrice || item.boxPrice)}</td>
-                                    <td className="p-4 text-gray-500 text-right">
-                                        {activeTab === 'sheets' && `${item.length} x ${item.width} mm`}
-                                        {activeTab === 'edgeBands' && `${item.rollLength} m`}
-                                        {activeTab === 'hardwareBoxes' && `${item.boxQty} un`}
-                                        {activeTab === 'unitaryItems' && `-`}
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        );
-    };
+    const filteredMaterials = materials.filter(m => m.type === activeTab);
 
     return (
-        <div className="flex flex-col items-center px-4 py-6 mx-auto w-full max-w-4xl text-gray-800 pb-20">
-            
-            {/* Cabeçalho */}
-            <div className="flex w-full justify-between items-center mb-6 bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-                <h2 className="text-xl font-extrabold text-gray-900">Catálogo</h2>
-                <button onClick={() => setCurrentPage('home')} className="px-4 py-2 bg-gray-100 text-gray-700 font-bold rounded-xl text-sm hover:bg-gray-200">Voltar</button>
-            </div>
-            
-            <div className="w-full bg-white p-2 rounded-2xl shadow-sm border border-gray-100 mb-6">
-                {/* Abas com overflow horizontal para deslizar no mobile */}
-                <div className="flex overflow-x-auto hide-scrollbar gap-2 p-1">
+        <div className="flex flex-col items-center pb-24 w-full bg-gray-50 min-h-screen">
+            <header className="flex flex-col items-center pt-8 pb-6 px-4 w-full bg-white shadow-sm mb-6 rounded-b-3xl border-b border-gray-100">
+                <h1 className="text-2xl font-extrabold text-gray-900 mb-1 tracking-tight">Catálogo de Materiais</h1>
+                <p className="text-gray-500 font-medium text-sm mb-4">Gerencie os preços base</p>
+                <button onClick={() => setCurrentPage('home')} className="flex items-center justify-center px-6 py-2.5 bg-gray-100 text-gray-700 rounded-full font-bold text-sm hover:bg-gray-200 transition-colors w-full max-w-xs">
+                    ← Voltar ao Início
+                </button>
+            </header>
+
+            <main className="flex flex-col w-full max-w-3xl px-4">
+                
+                {/* --- ABAS COM SCROLL HORIZONTAL PROTEGIDO --- */}
+                <div className="w-full bg-white p-1 rounded-2xl shadow-sm border border-gray-100 mb-6 flex overflow-x-auto hide-scrollbar select-none gap-1">
                     {[
-                        { id: 'sheets', label: 'Chapas' },
-                        { id: 'edgeBands', label: 'Fitas' },
-                        { id: 'unitaryItems', label: 'Itens' },
-                        { id: 'hardwareBoxes', label: 'Ferragens' }
+                        { id: 'sheet', label: 'Chapas' },
+                        { id: 'edge_band', label: 'Fitas de Borda' },
+                        { id: 'unitary_item', label: 'Unitários' },
+                        { id: 'hardware_box', label: 'Ferragens (Cx)' }
                     ].map(tab => (
                         <button 
-                            key={tab.id}
-                            onClick={() => setActiveTab(tab.id as any)} 
-                            className={`whitespace-nowrap flex-1 min-w-[100px] py-3 px-4 rounded-xl font-bold text-sm transition-all ${activeTab === tab.id ? 'bg-amber-100 text-amber-800 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}
+                            key={tab.id} 
+                            onClick={() => { setActiveTab(tab.id as TabType); setEditingId(null); setForm({ name: '', price: '', length: '', width: '', rollPrice: '', rollLength: '', unitPrice: '', boxPrice: '', boxQty: '' }); }} 
+                            className={`whitespace-nowrap px-5 py-3.5 rounded-xl font-bold text-sm transition-all flex-1 ${activeTab === tab.id ? 'bg-indigo-50 text-indigo-700 shadow-sm border border-indigo-100' : 'text-gray-500 hover:text-gray-800'}`}
                         >
                             {tab.label}
                         </button>
                     ))}
                 </div>
-            </div>
 
-            {/* Formulários (O layout de grid muda para coluna em telas pequenas) */}
-            <div className="w-full bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
-                {activeTab === 'sheets' && (
-                    <form onSubmit={(e) => handleFormSubmit(e, sheetForm, 'sheet', setSheetForm, initialSheetForm, 'Chapa')} className="flex flex-col gap-4">
+                {/* --- FORMULÁRIO DE CADASTRO --- */}
+                <div className="bg-white p-5 md:p-6 rounded-3xl shadow-sm border border-gray-100 mb-8">
+                    <h2 className="text-xl font-extrabold text-gray-800 border-b-2 border-gray-50 pb-3 mb-5">
+                        {editingId ? 'Editar Item' : 'Cadastrar Novo Item'}
+                    </h2>
+                    
+                    <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+                        <div className="flex flex-col gap-1">
+                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Nome do Material</label>
+                            <input type="text" name="name" value={form.name} onChange={handleChange} required placeholder="Ex: MDF Branco TX 15mm" className="h-14 px-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none w-full font-bold text-gray-800" />
+                        </div>
+
+                        {/* Campos Dinâmicos por Tipo */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <input className="h-14 px-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none font-medium" value={sheetForm.name} onChange={e => setSheetForm({...sheetForm, name:e.target.value})} placeholder="Nome (Ex: MDF Branco)" required />
-                            <input type="tel" className="h-14 px-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none font-bold text-emerald-700" value={sheetForm.price} onChange={e => setSheetForm({...sheetForm, price: maskCurrency(e.target.value)})} placeholder="Preço (R$)" required />
+                            
+                            {activeTab === 'sheet' && (
+                                <>
+                                    <div className="flex flex-col gap-1 w-full relative">
+                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Preço da Chapa</label>
+                                        <div className="relative w-full">
+                                            <input type="tel" name="price" value={form.price} onChange={handleChange} required placeholder="0,00" className="h-14 w-full px-4 pr-12 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-emerald-600 text-lg" />
+                                            <span className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-gray-400 select-none pointer-events-none">R$</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col gap-1 w-full relative">
+                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Comprimento</label>
+                                        <div className="relative w-full">
+                                            <input type="tel" name="length" value={form.length} onChange={handleChange} required placeholder="2750" className="h-14 w-full px-4 pr-14 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-lg" />
+                                            <span className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-gray-400 select-none pointer-events-none">mm</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col gap-1 w-full relative">
+                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Largura</label>
+                                        <div className="relative w-full">
+                                            <input type="tel" name="width" value={form.width} onChange={handleChange} required placeholder="1830" className="h-14 w-full px-4 pr-14 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-lg" />
+                                            <span className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-gray-400 select-none pointer-events-none">mm</span>
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+
+                            {activeTab === 'edge_band' && (
+                                <>
+                                    <div className="flex flex-col gap-1 w-full relative">
+                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Preço do Rolo</label>
+                                        <div className="relative w-full">
+                                            <input type="tel" name="rollPrice" value={form.rollPrice} onChange={handleChange} required placeholder="0,00" className="h-14 w-full px-4 pr-12 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-emerald-600 text-lg" />
+                                            <span className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-gray-400 select-none pointer-events-none">R$</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col gap-1 w-full relative">
+                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Tamanho do Rolo</label>
+                                        <div className="relative w-full">
+                                            <input type="tel" name="rollLength" value={form.rollLength} onChange={handleChange} required placeholder="20" className="h-14 w-full px-4 pr-14 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-lg" />
+                                            <span className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-gray-400 select-none pointer-events-none">mts</span>
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+
+                            {activeTab === 'unitary_item' && (
+                                <div className="flex flex-col gap-1 w-full relative">
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Preço Unitário</label>
+                                    <div className="relative w-full">
+                                        <input type="tel" name="unitPrice" value={form.unitPrice} onChange={handleChange} required placeholder="0,00" className="h-14 w-full px-4 pr-12 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-emerald-600 text-lg" />
+                                        <span className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-gray-400 select-none pointer-events-none">R$</span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'hardware_box' && (
+                                <>
+                                    <div className="flex flex-col gap-1 w-full relative">
+                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Preço da Caixa</label>
+                                        <div className="relative w-full">
+                                            <input type="tel" name="boxPrice" value={form.boxPrice} onChange={handleChange} required placeholder="0,00" className="h-14 w-full px-4 pr-12 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-emerald-600 text-lg" />
+                                            <span className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-gray-400 select-none pointer-events-none">R$</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col gap-1 w-full relative">
+                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Unidades por Caixa</label>
+                                        <div className="relative w-full">
+                                            <input type="tel" name="boxQty" value={form.boxQty} onChange={handleChange} required placeholder="100" className="h-14 w-full px-4 pr-14 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-lg" />
+                                            <span className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-gray-400 select-none pointer-events-none">un</span>
+                                        </div>
+                                    </div>
+                                </>
+                            )}
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <input type="tel" className="h-14 px-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none font-medium text-center" value={sheetForm.length} onChange={e => setSheetForm({...sheetForm, length: maskMeasure(e.target.value, 'mm')})} placeholder="Comp. (mm)" required />
-                            <input type="tel" className="h-14 px-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none font-medium text-center" value={sheetForm.width} onChange={e => setSheetForm({...sheetForm, width: maskMeasure(e.target.value, 'mm')})} placeholder="Larg. (mm)" required />
+
+                        <div className="flex gap-3 mt-2">
+                            {editingId && (
+                                <button type="button" onClick={() => { setEditingId(null); setForm({ name: '', price: '', length: '', width: '', rollPrice: '', rollLength: '', unitPrice: '', boxPrice: '', boxQty: '' }); }} className="h-14 px-6 bg-white border border-gray-200 text-gray-700 font-bold rounded-2xl shadow-sm hover:bg-gray-50 transition-colors">
+                                    Cancelar
+                                </button>
+                            )}
+                            <button type="submit" className="h-14 flex-1 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-extrabold rounded-2xl shadow-lg shadow-indigo-500/30 active:scale-[0.98] transition-all text-lg">
+                                {editingId ? 'Atualizar Catálogo' : 'Adicionar ao Catálogo'}
+                            </button>
                         </div>
-                        <button type="submit" className="h-14 mt-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl shadow-md active:scale-[0.98] transition-all">
-                            {sheetForm.id ? 'Salvar Alteração' : '+ Adicionar Chapa'}
-                        </button>
                     </form>
-                )}
-                
-                {/* (A mesma lógica de classes foi aplicada às outras abas para brevidade) */}
-                {activeTab === 'edgeBands' && (
-                    <form onSubmit={(e) => handleFormSubmit(e, edgeBandForm, 'edge_band', setEdgeBandForm, initialEdgeBandForm, 'Fita')} className="flex flex-col gap-4">
-                        <input className="h-14 px-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none" value={edgeBandForm.name} onChange={e => setEdgeBandForm({...edgeBandForm, name:e.target.value})} placeholder="Nome (Ex: Fita Branca)" required />
-                        <div className="grid grid-cols-2 gap-4">
-                            <input type="tel" className="h-14 px-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none font-bold text-emerald-700" value={edgeBandForm.rollPrice} onChange={e => setEdgeBandForm({...edgeBandForm, rollPrice: maskCurrency(e.target.value)})} placeholder="Preço Rolo" required />
-                            <input type="tel" className="h-14 px-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none font-medium text-center" value={edgeBandForm.rollLength} onChange={e => setEdgeBandForm({...edgeBandForm, rollLength: maskMeasure(e.target.value, 'm')})} placeholder="Tamanho (m)" required />
-                        </div>
-                        <button type="submit" className="h-14 mt-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl shadow-md active:scale-[0.98] transition-all">{edgeBandForm.id ? 'Salvar' : '+ Adicionar Fita'}</button>
-                    </form>
-                )}
-
-                {/* Lista Renderizada */}
-                {renderList()}
-            </div>
-
-            {/* Modais */}
-            <Modal isOpen={actionModal.isOpen} onClose={() => setActionModal({ isOpen: false, item: null, type: '' })} title={`Opções`} footer={<button onClick={() => setActionModal({ isOpen: false, item: null, type: '' })} className="w-full py-3 bg-gray-100 text-gray-800 font-bold rounded-xl">Fechar</button>}>
-                <div className="flex flex-col gap-3">
-                    <button onClick={() => handleEditClick(actionModal.item, actionModal.type)} className="flex items-center p-4 bg-white border border-gray-200 rounded-xl font-bold text-orange-700 hover:bg-orange-50 border-l-4 border-l-orange-500">
-                        <div className="w-6 h-6 mr-3"><EditIcon /></div> Editar Cadastro
-                    </button>
-                    <button onClick={() => { setDeleteModal({ isOpen: true, item: actionModal.item }); setActionModal({ isOpen: false, item: null, type: '' }); }} className="flex items-center p-4 bg-white border border-gray-200 rounded-xl font-bold text-red-700 hover:bg-red-50 border-l-4 border-l-red-500">
-                        <div className="w-6 h-6 mr-3"><TrashIcon /></div> Excluir do Catálogo
-                    </button>
                 </div>
-            </Modal>
 
-            <Modal isOpen={deleteModal.isOpen} onClose={() => setDeleteModal({ isOpen: false, item: null })} title="Atenção" footer={
-                <div className="grid grid-cols-2 gap-3 w-full">
-                    <button onClick={() => setDeleteModal({ isOpen: false, item: null })} className="py-3 bg-gray-100 text-gray-700 font-bold rounded-xl">Cancelar</button>
-                    <button onClick={handleDeleteConfirm} className="py-3 bg-red-500 text-white font-bold rounded-xl shadow-md">Confirmar</button>
-                </div>
-            }>
-                <p className="text-center text-gray-800">Deseja apagar <strong>{deleteModal.item?.name}</strong> do catálogo permanentemente?</p>
-            </Modal>
-
+                {/* --- LISTA DE ITENS SALVOS --- */}
+                <h3 className="text-lg font-bold text-gray-800 mb-4 tracking-tight px-2">Itens Salvos</h3>
+                {isLoading ? (
+                    <div className="text-center py-10"><p className="text-gray-500 font-bold animate-pulse">Carregando catálogo...</p></div>
+                ) : (
+                    <div className="flex flex-col gap-3">
+                        {filteredMaterials.length === 0 ? (
+                            <div className="text-center py-10 bg-white rounded-3xl border border-dashed border-gray-300">
+                                <p className="text-gray-400 font-medium">Nenhum item cadastrado nesta categoria.</p>
+                            </div>
+                        ) : (
+                            filteredMaterials.map((item) => (
+                                <div key={item.id} className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                                    <div className="flex flex-col">
+                                        <strong className="text-gray-900 font-bold text-lg">{item.name}</strong>
+                                        <div className="flex flex-wrap gap-2 mt-1.5">
+                                            {item.type === 'sheet' && (
+                                                <>
+                                                    <span className="bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded text-sm">{formatCurrency(item.price)}</span>
+                                                    <span className="bg-gray-100 text-gray-600 font-medium px-2 py-0.5 rounded text-sm">{item.length} x {item.width} mm</span>
+                                                </>
+                                            )}
+                                            {item.type === 'edge_band' && (
+                                                <>
+                                                    <span className="bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded text-sm">{formatCurrency(item.rollPrice)}</span>
+                                                    <span className="bg-gray-100 text-gray-600 font-medium px-2 py-0.5 rounded text-sm">Rolo: {item.rollLength} mts</span>
+                                                </>
+                                            )}
+                                            {item.type === 'unitary_item' && (
+                                                <span className="bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded text-sm">{formatCurrency(item.unitPrice)} / un</span>
+                                            )}
+                                            {item.type === 'hardware_box' && (
+                                                <>
+                                                    <span className="bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded text-sm">{formatCurrency(item.boxPrice)}</span>
+                                                    <span className="bg-gray-100 text-gray-600 font-medium px-2 py-0.5 rounded text-sm">Cx c/ {item.boxQty} un</span>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => handleEdit(item)} className="p-3 bg-orange-50 text-orange-600 rounded-xl hover:bg-orange-100 transition-colors flex-1 flex justify-center"><div className="w-5 h-5"><EditIcon /></div></button>
+                                        <button onClick={() => handleDelete(item.id)} className="p-3 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition-colors flex-1 flex justify-center"><div className="w-5 h-5"><TrashIcon /></div></button>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                )}
+            </main>
         </div>
     );
-};
-
-export default Materials;
+}
