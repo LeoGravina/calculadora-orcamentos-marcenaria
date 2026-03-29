@@ -1,276 +1,252 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { collection, getDocs, doc, deleteDoc, updateDoc, Firestore } from 'firebase/firestore';
+import React, { useState, useEffect } from 'react';
+import { collection, getDocs, deleteDoc, doc, updateDoc, Firestore } from 'firebase/firestore';
 import toast from 'react-hot-toast';
-import { EditIcon, TrashIcon, DownloadIcon, DuplicateIcon } from './icons';
-import { getImageBase64, formatCurrency } from '../utils/helpers';
+import Modal from './Modal';
+import { formatCurrency, getImageBase64 } from '../utils/helpers';
 import generateBudgetPdf from '../utils/pdfGenerator';
 import { qrCodeBase64 } from '../utils/qrCodeImage';
-import Modal from './Modal';
 
-// --- TYPESCRIPT: Interfaces ---
-interface Budget {
-    id: string;
-    budgetId: string | number;
-    clientName: string;
-    projectName: string;
-    status?: string;
-    finalBudgetPrice?: number;
-    grandTotal?: number;
-    [key: string]: any; // Permite outros dados flexíveis do orçamento
-}
+// IMPORTAÇÃO DOS REACT ICONS (NOMES CORRIGIDOS)
+import { 
+    MdOutlineArrowBack, 
+    MdOutlineSearch, 
+    MdOutlineDownload, 
+    MdOutlineEdit, 
+    MdOutlineContentCopy, 
+    MdOutlineDelete,
+    MdOutlinePending,
+    MdCheckCircleOutline,
+    MdOutlineCancel, // <-- CORRIGIDO AQUI
+    MdOutlineAccessTime,
+    MdAttachMoney    // <-- CORRIGIDO AQUI (Substituiu o BiCurrencyDollar)
+} from 'react-icons/md';
 
 interface SavedBudgetsProps {
     setCurrentPage: (page: string) => void;
-    handleEditBudget: (budget: Budget) => void;
-    handleDuplicateBudget: (budget: Budget) => void;
+    handleEditBudget: (budget: any) => void;
+    handleDuplicateBudget: (budget: any) => void;
     db: Firestore | null;
     DADOS_DA_EMPRESA: any;
     logoDaEmpresa: string;
 }
 
-const statusOptions = ['Pendente', 'Aprovado', 'Em Produção', 'Concluído', 'Recusado'];
-
-// Função auxiliar para as cores do Tailwind baseadas no status
-const getStatusClasses = (status: string) => {
-    switch (status) {
-        case 'Aprovado':
-        case 'Pago': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-        case 'Em Produção': return 'bg-blue-100 text-blue-800 border-blue-200';
-        case 'Recusado': return 'bg-red-100 text-red-800 border-red-200';
-        case 'Concluído': return 'bg-gray-100 text-gray-700 border-gray-300';
-        default: return 'bg-amber-100 text-amber-800 border-amber-200'; // Pendente
-    }
-};
-
-const SavedBudgets: React.FC<SavedBudgetsProps> = ({ 
-    setCurrentPage, handleEditBudget, handleDuplicateBudget, db, DADOS_DA_EMPRESA, logoDaEmpresa 
-}) => {
-    const [budgets, setBudgets] = useState<Budget[]>([]);
+export default function SavedBudgets({ setCurrentPage, handleEditBudget, handleDuplicateBudget, db, DADOS_DA_EMPRESA, logoDaEmpresa }: SavedBudgetsProps) {
+    const [budgets, setBudgets] = useState<any[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [actionModal, setActionModal] = useState<{ isOpen: boolean, budget: any | null }>({ isOpen: false, budget: null });
     const [searchTerm, setSearchTerm] = useState('');
-    const [statusFilter, setStatusFilter] = useState('');
-    const [loading, setLoading] = useState(true);
-    
-    const [deleteModal, setDeleteModal] = useState({ isOpen: false, id: '', budgetId: '', clientName: '' });
-    const [actionModal, setActionModal] = useState<{isOpen: boolean, budget: Budget | null}>({ isOpen: false, budget: null });
 
-    const fetchBudgets = useCallback(async () => {
+    const loadBudgets = async () => {
         if (!db) return;
-        setLoading(true);
+        setIsLoading(true);
         try {
             const querySnapshot = await getDocs(collection(db, "budgets"));
-            let budgetsData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Budget));
-
-            if (searchTerm) {
-                const lowerTerm = searchTerm.toLowerCase();
-                budgetsData = budgetsData.filter(b =>
-                    b.clientName.toLowerCase().includes(lowerTerm) ||
-                    b.projectName.toLowerCase().includes(lowerTerm)
-                );
-            }
-
-            if (statusFilter) {
-                budgetsData = budgetsData.filter(b => (b.status || 'Pendente') === statusFilter);
-            }
-
-            budgetsData.sort((a, b) => Number(b.budgetId || 0) - Number(a.budgetId || 0));
-            setBudgets(budgetsData);
-        } catch (error) { 
-            toast.error("Falha ao carregar orçamentos."); 
-        } finally { 
-            setLoading(false); 
+            const items = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            // Ordenar dos mais recentes para os mais antigos
+            items.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+            setBudgets(items);
+        } catch (error) {
+            toast.error("Erro ao carregar orçamentos.");
+        } finally {
+            setIsLoading(false);
         }
-    }, [db, searchTerm, statusFilter]);
+    };
 
-    useEffect(() => { fetchBudgets(); }, [fetchBudgets]);
+    useEffect(() => {
+        loadBudgets();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [db]);
 
-    const handleDeleteConfirm = async () => {
-        if (!db) return;
-        const { id, budgetId } = deleteModal;
+    const handleDelete = async () => {
+        if (!db || !actionModal.budget) return;
+        if (!window.confirm("Tem certeza absoluta que deseja excluir este orçamento?")) return;
+
         const toastId = toast.loading('Excluindo...');
         try {
-            await deleteDoc(doc(db, "budgets", id));
-            toast.success(`Orçamento ${budgetId} excluído!`, { id: toastId });
-            setDeleteModal({ isOpen: false, id: '', budgetId: '', clientName: '' });
-            fetchBudgets();
-        } catch (error) { toast.error("Erro ao excluir.", { id: toastId }); }
+            await deleteDoc(doc(db, "budgets", actionModal.budget.id));
+            toast.success('Excluído com sucesso.', { id: toastId });
+            setActionModal({ isOpen: false, budget: null });
+            loadBudgets(); // Recarrega a lista
+        } catch (error) {
+            toast.error('Erro ao excluir.', { id: toastId });
+        }
     };
 
-    const handleStatusChange = async (e: React.ChangeEvent<HTMLSelectElement>, id: string) => {
-        e.stopPropagation();
-        if (!db) return;
-        const newStatus = e.target.value;
+    const handleDownloadPdf = async () => {
+        if (!actionModal.budget) return;
+        const toastId = toast.loading('Gerando PDF do Orçamento...');
         try {
-            await updateDoc(doc(db, 'budgets', id), { status: newStatus });
-            setBudgets(prev => prev.map(b => b.id === id ? { ...b, status: newStatus } : b));
-            toast.success('Status atualizado!');
-        } catch (error) { toast.error('Erro ao atualizar status.'); }
+            const logo = await getImageBase64(logoDaEmpresa);
+            const data = {
+                ...actionModal.budget,
+                qrCodeImage: qrCodeBase64
+            };
+            generateBudgetPdf(data, DADOS_DA_EMPRESA, logo);
+            toast.success('PDF Gerado com sucesso!', { id: toastId });
+            setActionModal({ isOpen: false, budget: null });
+        } catch (error) {
+            console.error(error);
+            toast.error('Erro ao gerar PDF.', { id: toastId });
+        }
     };
+
+    const handleStatusChange = async (newStatus: string) => {
+        if (!db || !actionModal.budget) return;
+        const toastId = toast.loading('Atualizando status...');
+        try {
+            await updateDoc(doc(db, "budgets", actionModal.budget.id), { status: newStatus });
+            toast.success(`Status atualizado para ${newStatus}`, { id: toastId });
+            setActionModal({ isOpen: false, budget: null });
+            loadBudgets();
+        } catch (e) {
+            toast.error('Erro ao atualizar status', { id: toastId });
+        }
+    };
+
+    const filteredBudgets = budgets.filter(b => 
+        b.clientName?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        b.projectName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        b.budgetId?.includes(searchTerm)
+    );
 
     return (
-        <div className="flex flex-col items-center px-4 py-6 mx-auto w-full max-w-5xl text-gray-800 mb-20">
-            
-            {/* Cabeçalho */}
-            <header className="flex flex-col items-center mb-6 w-full">
-                <h1 className="text-2xl font-extrabold text-gray-900 mb-2">Gerenciamento</h1>
-                <img src={logoDaEmpresa} alt="Logo" className="w-20 h-20 rounded-full border-2 border-white shadow-md mb-4 bg-black" />
+        <div className="flex flex-col items-center pb-24 w-full bg-gray-50 min-h-screen">
+            <header className="flex flex-col items-center pt-8 pb-6 px-4 w-full bg-white shadow-sm mb-6 rounded-b-3xl border-b border-gray-100">
+                <h1 className="text-2xl font-extrabold text-gray-900 mb-1 tracking-tight">Orçamentos Salvos</h1>
+                <p className="text-gray-500 font-medium text-sm mb-4">Gerenciamento de clientes</p>
+                
+                {/* BOTÃO VOLTAR */}
                 <button 
                     onClick={() => setCurrentPage('home')} 
-                    className="flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl shadow-sm hover:bg-gray-50 hover:text-amber-600 transition-all font-bold text-sm"
+                    className="flex items-center justify-center pl-4 pr-6 py-2.5 bg-gray-100 text-gray-700 rounded-full font-bold text-sm hover:bg-gray-200 transition-colors w-full max-w-xs active:scale-95"
                 >
-                    <span>← Voltar ao Início</span>
+                    <MdOutlineArrowBack className="w-5 h-5 mr-2 text-gray-500" />
+                    Voltar ao Início
                 </button>
             </header>
 
-            <main className="w-full">
-                <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-                    <h2 className="text-xl font-bold text-gray-800 border-b-2 border-gray-50 pb-3 mb-4">Orçamentos Salvos</h2>
-                    
-                    {/* Filtros Mobile-First (Empilhados no celular, lado a lado no PC) */}
-                    <div className="flex flex-col md:flex-row gap-3 mb-6">
-                        <input 
-                            type="text" 
-                            placeholder="Buscar cliente ou projeto..." 
-                            value={searchTerm} 
-                            onChange={(e) => setSearchTerm(e.target.value)} 
-                            className="w-full md:flex-1 h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none transition-all"
-                        />
-                        <select 
-                            value={statusFilter} 
-                            onChange={(e) => setStatusFilter(e.target.value)} 
-                            className="w-full md:w-48 h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none cursor-pointer transition-all"
-                        >
-                            <option value="">Todos os Status</option>
-                            {statusOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                        </select>
-                    </div>
-
-                    {loading ? (
-                        <p className="text-center py-10 text-gray-500 font-medium animate-pulse">Carregando orçamentos...</p>
-                    ) : (
-                        <>
-                            {/* === VISÃO MOBILE (CARDS) === */}
-                            {/* A classe 'md:hidden' esconde isso no PC e mostra só no celular */}
-                            <div className="flex flex-col gap-4 md:hidden">
-                                {budgets.map(b => (
-                                    <div 
-                                        key={b.id} 
-                                        onClick={() => setActionModal({ isOpen: true, budget: b })}
-                                        className="relative bg-white border border-gray-200 rounded-xl p-4 shadow-sm active:scale-[0.98] transition-transform overflow-hidden"
-                                    >
-                                        {/* Barra colorida na esquerda do card indicando o status */}
-                                        <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${getStatusClasses(b.status || 'Pendente').split(' ')[0]}`}></div>
-                                        
-                                        <div className="flex justify-between items-start mb-2 pl-2">
-                                            <strong className="text-gray-900 font-bold truncate pr-2">#{b.budgetId} - {b.clientName}</strong>
-                                            
-                                            {/* Select de Status super amigável para o toque */}
-                                            <select 
-                                                value={b.status || 'Pendente'} 
-                                                onChange={(e) => handleStatusChange(e, b.id)} 
-                                                onClick={(e) => e.stopPropagation()} 
-                                                className={`text-xs font-bold px-2 py-1.5 rounded-lg border appearance-none text-center ${getStatusClasses(b.status || 'Pendente')}`}
-                                            >
-                                                {statusOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                                            </select>
-                                        </div>
-                                        
-                                        <div className="flex justify-between items-end pl-2 mt-3">
-                                            <span className="text-sm text-gray-500 truncate w-1/2">{b.projectName}</span>
-                                            <span className="text-lg font-extrabold text-gray-800">{formatCurrency(b.finalBudgetPrice || b.grandTotal || 0)}</span>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-
-                            {/* === VISÃO DESKTOP (TABELA) === */}
-                            {/* A classe 'hidden md:block' esconde no celular e mostra no PC */}
-                            <div className="hidden md:block overflow-x-auto rounded-xl border border-gray-200">
-                                <table className="w-full text-left border-collapse">
-                                    <thead className="bg-gray-50 text-xs uppercase text-gray-500 font-bold">
-                                        <tr>
-                                            <th className="p-4 border-b border-gray-200">Nº</th>
-                                            <th className="p-4 border-b border-gray-200">Cliente</th>
-                                            <th className="p-4 border-b border-gray-200">Projeto</th>
-                                            <th className="p-4 border-b border-gray-200">Status</th>
-                                            <th className="p-4 border-b border-gray-200 text-right">Valor</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100">
-                                        {budgets.map(b => (
-                                            <tr key={b.id} onClick={() => setActionModal({ isOpen: true, budget: b })} className="hover:bg-gray-50 cursor-pointer transition-colors group">
-                                                <td className="p-4 text-gray-600 font-medium">#{b.budgetId}</td>
-                                                <td className="p-4 font-bold text-gray-900">{b.clientName}</td>
-                                                <td className="p-4 text-gray-600">{b.projectName}</td>
-                                                <td className="p-4">
-                                                    <select 
-                                                        value={b.status || 'Pendente'} 
-                                                        onChange={(e) => handleStatusChange(e, b.id)} 
-                                                        onClick={(e) => e.stopPropagation()} 
-                                                        className={`text-xs font-bold px-3 py-1.5 rounded-lg border appearance-none cursor-pointer ${getStatusClasses(b.status || 'Pendente')}`}
-                                                    >
-                                                        {statusOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                                                    </select>
-                                                </td>
-                                                <td className="p-4 font-extrabold text-gray-900 text-right">{formatCurrency(b.finalBudgetPrice || b.grandTotal || 0)}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                            
-                            {/* Estado Vazio */}
-                            {budgets.length === 0 && (
-                                <div className="text-center py-12 px-4 text-gray-500">
-                                    <p className="mb-4">Nenhum orçamento encontrado com esses filtros.</p>
-                                    {(searchTerm || statusFilter) && (
-                                        <button 
-                                            onClick={() => {setSearchTerm(''); setStatusFilter('');}} 
-                                            className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-lg transition-colors"
-                                        >
-                                            Limpar Filtros
-                                        </button>
-                                    )}
-                                </div>
-                            )}
-                        </>
-                    )}
+            <main className="flex flex-col gap-4 w-full max-w-3xl px-4">
+                
+                {/* Barra de Pesquisa */}
+                <div className="relative w-full">
+                    <input 
+                        type="text" 
+                        placeholder="Buscar por cliente, projeto ou número..." 
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="h-14 px-5 bg-white border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none w-full font-medium shadow-sm pr-12"
+                    />
+                    <MdOutlineSearch className="absolute right-4 top-1/2 -translate-y-1/2 h-6 w-6 text-gray-400 pointer-events-none" />
                 </div>
 
-                {/* MODAIS: (Seu componente Modal.js vai precisar ser ajustado para Tailwind depois, mas a chamada fica igual) */}
-                <Modal 
-                    isOpen={actionModal.isOpen} 
-                    onClose={() => setActionModal({ isOpen: false, budget: null })} 
-                    title={`Opções: ${actionModal.budget?.clientName || ''}`} 
-                    footer={<button onClick={() => setActionModal({ isOpen: false, budget: null })} className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold rounded-xl transition-colors">Fechar</button>}
-                >
-                    <div className="flex flex-col gap-3 pb-2">
-                        <button onClick={() => { handleEditBudget(actionModal.budget!); setActionModal({isOpen: false, budget: null}); }} className="flex items-center p-4 w-full text-left font-bold border border-gray-200 rounded-xl bg-white hover:bg-orange-50 border-l-4 border-l-orange-500 text-orange-700 transition-all shadow-sm">
-                            <div className="w-6 h-6 mr-3"><EditIcon /></div> Editar Orçamento
-                        </button>
-                        <button onClick={() => {/* Lógica de PDF */}} className="flex items-center p-4 w-full text-left font-bold border border-gray-200 rounded-xl bg-white hover:bg-blue-50 border-l-4 border-l-blue-500 text-blue-700 transition-all shadow-sm">
-                            <div className="w-6 h-6 mr-3"><DownloadIcon /></div> Baixar PDF
-                        </button>
-                        <button onClick={() => { handleDuplicateBudget(actionModal.budget!); setActionModal({isOpen: false, budget: null}); }} className="flex items-center p-4 w-full text-left font-bold border border-gray-200 rounded-xl bg-white hover:bg-purple-50 border-l-4 border-l-purple-500 text-purple-700 transition-all shadow-sm">
-                            <div className="w-6 h-6 mr-3"><DuplicateIcon /></div> Duplicar
-                        </button>
-                        <button onClick={() => { setDeleteModal({ isOpen: true, id: actionModal.budget!.id, budgetId: String(actionModal.budget!.budgetId), clientName: actionModal.budget!.clientName }); setActionModal({isOpen: false, budget: null}); }} className="flex items-center p-4 w-full text-left font-bold border border-gray-200 rounded-xl bg-white hover:bg-red-50 border-l-4 border-l-red-500 text-red-700 mt-2 transition-all shadow-sm">
-                            <div className="w-6 h-6 mr-3"><TrashIcon /></div> Excluir
-                        </button>
+                {isLoading ? (
+                    <div className="text-center py-10"><p className="text-gray-500 font-bold animate-pulse">Carregando orçamentos...</p></div>
+                ) : (
+                    <div className="flex flex-col gap-4 mt-2">
+                        {filteredBudgets.length === 0 ? (
+                            <div className="text-center py-10 bg-white rounded-3xl border border-dashed border-gray-300">
+                                <p className="text-gray-400 font-medium">Nenhum orçamento encontrado.</p>
+                            </div>
+                        ) : (
+                            filteredBudgets.map((budget) => (
+                                <div 
+                                    key={budget.id} 
+                                    onClick={() => setActionModal({ isOpen: true, budget })} 
+                                    className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm active:scale-[0.98] transition-transform cursor-pointer relative overflow-hidden"
+                                >
+                                    <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${budget.status === 'Aprovado' ? 'bg-emerald-500' : budget.status === 'Recusado' ? 'bg-red-500' : 'bg-amber-400'}`}></div>
+                                    
+                                    <div className="flex justify-between items-start mb-3">
+                                        <div className="flex flex-col">
+                                            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">#{budget.budgetId || '000'}</span>
+                                            <strong className="text-gray-900 font-bold text-lg leading-tight">{budget.clientName}</strong>
+                                        </div>
+                                        
+                                        {/* STATUS BADGE */}
+                                        <span className={`flex items-center gap-1.5 text-[10px] font-extrabold uppercase px-2.5 py-1.5 rounded-md ${budget.status === 'Aprovado' ? 'bg-emerald-100 text-emerald-800' : budget.status === 'Recusado' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'}`}>
+                                            {budget.status === 'Aprovado' ? <MdCheckCircleOutline className="w-3.5 h-3.5 opacity-70" /> : budget.status === 'Recusado' ? <MdOutlineCancel className="w-3.5 h-3.5 opacity-70" /> : <MdOutlineAccessTime className="w-3.5 h-3.5 opacity-70" />}
+                                            {budget.status || 'Pendente'}
+                                        </span>
+                                    </div>
+                                    
+                                    <p className="text-sm text-gray-600 font-medium mb-4">{budget.projectName || 'Sem descrição de projeto'}</p>
+                                    
+                                    <div className="flex justify-between items-center border-t border-gray-50 pt-3">
+                                        <span className="text-xs font-bold text-gray-400">Total:</span>
+                                        {/* VALOR COM MdAttachMoney */}
+                                        <div className="flex items-center font-black text-blue-700 text-xl tracking-tight">
+                                            <MdAttachMoney className="w-5 h-5 mr-0.5 text-blue-300 pointer-events-none" />
+                                            {formatCurrency(budget.finalValue || budget.finalBudgetPrice || 0)}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))
+                        )}
                     </div>
-                </Modal>
-
-                <Modal isOpen={deleteModal.isOpen} onClose={() => setDeleteModal({ isOpen: false, id: '', budgetId: '', clientName: '' })} title="Confirmar Exclusão" footer={
-                    <div className="grid grid-cols-2 gap-3 w-full mt-4">
-                        <button onClick={() => setDeleteModal({ isOpen: false, id: '', budgetId: '', clientName: '' })} className="py-3 bg-gray-100 text-gray-700 font-bold rounded-xl border border-gray-200">Cancelar</button>
-                        <button onClick={handleDeleteConfirm} className="py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl shadow-md">Excluir</button>
-                    </div>
-                }>
-                    <p className="text-center text-lg text-gray-800">Tem certeza que deseja apagar o orçamento de <strong className="text-red-600">{deleteModal.clientName}</strong>?</p>
-                    <p className="text-center text-sm text-gray-500 mt-2">Não será possível recuperar depois.</p>
-                </Modal>
+                )}
             </main>
+
+            {/* MODAL DE AÇÕES */}
+            <Modal 
+                isOpen={actionModal.isOpen} 
+                onClose={() => setActionModal({ isOpen: false, budget: null })} 
+                title={`Opções: ${actionModal.budget?.clientName?.split(' ')[0] || ''}`}
+                footer={<button onClick={() => setActionModal({ isOpen: false, budget: null })} className="w-full py-3.5 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition-colors">Fechar</button>}
+            >
+                <div className="flex flex-col gap-3 pb-2">
+                    
+                    {/* Status Toggle */}
+                    <div className="flex gap-2 mb-2 p-1 bg-gray-50 rounded-xl border border-gray-200">
+                        {[
+                            {s: 'Pendente', i: <MdOutlinePending className="w-4 h-4 mr-1.5 opacity-70" />},
+                            {s: 'Aprovado', i: <MdCheckCircleOutline className="w-4 h-4 mr-1.5 opacity-70" />},
+                            {s: 'Recusado', i: <MdOutlineCancel className="w-4 h-4 mr-1.5 opacity-70" />}
+                        ].map(item => (
+                            <button 
+                                key={item.s}
+                                onClick={() => handleStatusChange(item.s)}
+                                className={`flex items-center justify-center flex-1 py-2.5 text-xs font-bold rounded-lg transition-all ${actionModal.budget?.status === item.s ? (item.s === 'Aprovado' ? 'bg-emerald-500 text-white shadow-sm' : item.s === 'Recusado' ? 'bg-red-500 text-white shadow-sm' : 'bg-amber-400 text-amber-950 shadow-sm') : 'text-gray-500 hover:bg-gray-200'}`}
+                            >
+                                {item.i}
+                                {item.s}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* BOTÕES DE AÇÃO */}
+                    <button 
+                        onClick={() => { handleEditBudget(actionModal.budget); setActionModal({ isOpen: false, budget: null }); }} 
+                        className="flex items-center justify-center py-4 w-full font-bold border-2 border-orange-500 rounded-xl bg-white text-orange-600 hover:bg-orange-50 transition-all shadow-sm active:scale-98"
+                    >
+                        <MdOutlineEdit className="w-5 h-5 mr-3 text-orange-400" />
+                        Editar Orçamento
+                    </button>
+                    
+                    <button 
+                        onClick={handleDownloadPdf} 
+                        className="flex items-center justify-center py-4 w-full font-bold border-2 border-blue-200 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 transition-all shadow-sm active:scale-98"
+                    >
+                        <MdOutlineDownload className="w-5 h-5 mr-3 text-blue-500" />
+                        Baixar PDF
+                    </button>
+
+                    <button 
+                        onClick={() => { handleDuplicateBudget(actionModal.budget); setActionModal({ isOpen: false, budget: null }); }} 
+                        className="flex items-center justify-center py-4 w-full font-bold border-2 border-purple-500 rounded-xl bg-white text-purple-600 hover:bg-purple-50 transition-all shadow-sm active:scale-98"
+                    >
+                        <MdOutlineContentCopy className="w-5 h-5 mr-3 text-purple-400" />
+                        Duplicar
+                    </button>
+
+                    <button 
+                        onClick={handleDelete} 
+                        className="flex items-center justify-center py-4 w-full font-bold border-2 border-red-500 rounded-xl bg-white text-red-600 hover:bg-red-50 mt-2 transition-all shadow-sm active:scale-98"
+                    >
+                        <MdOutlineDelete className="w-5 h-5 mr-3 text-red-400" />
+                        Excluir
+                    </button>
+                </div>
+            </Modal>
         </div>
     );
-};
-
-export default SavedBudgets;
+}
