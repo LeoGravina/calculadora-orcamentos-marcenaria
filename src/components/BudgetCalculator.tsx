@@ -10,11 +10,11 @@ import ExtrasManager from './budget/ExtrasManager';
 import CuttingPlanCanvas from './CuttingPlanCanvas';
 
 // Utils
-import { getImageBase64, formatCurrency } from '../utils/helpers';
-import { unmaskMoney, unmaskNumber, maskCurrency } from '../utils/masks'; 
+import { getImageBase64, formatCurrency, safeParseFloat, calcPieceRawCost } from '../utils/helpers';
+import { unmaskMoney, unmaskNumber, maskCurrency } from '../utils/masks';
 import generateBudgetPdf from '../utils/pdfGenerator';
 import { qrCodeBase64 } from '../utils/qrCodeImage';
-import { cuttingOptimizer } from '../utils/cuttingOptimizer';
+import { generateCuttingPlan } from '../utils/cuttingOptimizer';
 
 // === TYPESCRIPT INTERFACES ===
 export interface Sheet { 
@@ -35,11 +35,12 @@ export interface Piece {
     width: string | number; 
     qty: string | number; 
     sheetId: string; 
-    bandL1: boolean; 
-    bandL2: boolean; 
-    bandW1: boolean; 
-    bandW2: boolean; 
-    totalCost?: number; 
+    bandL1: boolean;
+    bandL2: boolean;
+    bandW1: boolean;
+    bandW2: boolean;
+    grainLock?: boolean;
+    totalCost?: number;
 }
 export interface Hardware { id: string; name: string; boxPrice: string | number; boxQty: string | number; usedQty: string | number; totalCost?: number; [key: string]: any; }
 export interface UnitItem { id: string; name: string; unitPrice: string | number; qty: string | number; totalCost?: number; [key: string]: any; }
@@ -84,12 +85,12 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
     const [editingId, setEditingId] = useState<string | null>(null);
     const [budgetId, setBudgetId] = useState('');
     const [isLoadingPlan, setIsLoadingPlan] = useState(false);
-    const [landscapePlan, setLandscapePlan] = useState<any>(null);
-    const [portraitPlan, setPortraitPlan] = useState<any>(null);
+    const [cuttingPlan, setCuttingPlan] = useState<any>(null);
+    const [cuttingGap, setCuttingGap] = useState<number>(3);
 
     const initialPieceForm: Piece = useMemo(() => ({
-        name: "", length: "", width: "", qty: 1, sheetId: '', 
-        bandL1: false, bandL2: false, bandW1: false, bandW2: false, id: null
+        name: "", length: "", width: "", qty: 1, sheetId: '',
+        bandL1: false, bandL2: false, bandW1: false, bandW2: false, grainLock: false, id: null
     }), []);
     const [pieceForm, setPieceForm] = useState<Piece>(initialPieceForm);
 
@@ -169,52 +170,26 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
         }
     }, [catalogSheets]);
 
-    // === CÁLCULOS BLINDADOS (NOVA MATEMÁTICA SEPARADA) ===
+    // === CÁLCULOS BLINDADOS (PUROS, SEM MUTAR O ESTADO) ===
     const totals = useMemo(() => {
-        const safeParseFloat = (val: string | number | undefined | null) => {
-            if (typeof val === 'number') return val;
-            if (!val) return 0;
-            const strStr = String(val).replace(/[^\d.,-]/g, '').replace(',', '.');
-            return parseFloat(strStr) || 0;
-        };
-
-        const cleanMargin = unmaskNumber(profitMargin); 
+        const cleanMargin = unmaskNumber(profitMargin);
         const cleanHelper = unmaskMoney(helperCost);
         const cleanDelivery = unmaskMoney(deliveryFee);
         const cleanDiscount = unmaskNumber(discountPercentage);
-        const cleanFinalPrice = unmaskMoney(finalBudgetPrice); 
+        const cleanFinalPrice = unmaskMoney(finalBudgetPrice);
 
         // 1. CUSTO REAL DOS MATERIAIS (Sem lucro)
-        const rawPiecesCost = pieces.reduce((acc, p) => { 
-            const s = sheets.find(sheet => sheet.id === p.sheetId); 
-            if (!s) return acc;
-            let sLength = safeParseFloat(s.length);
-            let sWidth = safeParseFloat(s.width);
-            const sPrice = safeParseFloat(s.price);
-            if (sLength > 0 && sLength < 100) sLength *= 1000;
-            if (sWidth > 0 && sWidth < 100) sWidth *= 1000;
-            const sArea = sLength * sWidth; 
-            if (sArea <= 0) return acc; 
-            const ppsmm = sPrice / sArea; 
-            const pArea = safeParseFloat(p.length) * safeParseFloat(p.width); 
-            
-            const cost = pArea * ppsmm * safeParseFloat(p.qty);
-            p.totalCost = cost * (1 + (cleanMargin / 100)); 
-            return acc + cost; 
+        const rawPiecesCost = pieces.reduce((acc, p) => {
+            const s = sheets.find(sheet => sheet.id === p.sheetId);
+            return acc + calcPieceRawCost(p, s);
         }, 0);
 
-        const rawHardwareCost = hardware.reduce((acc, i) => {
-            const cost = (safeParseFloat(i.boxPrice) / (safeParseFloat(i.boxQty) || 1) * safeParseFloat(i.usedQty));
-            i.totalCost = cost * (1 + (cleanMargin / 100));
-            return acc + cost;
-        }, 0);
+        const rawHardwareCost = hardware.reduce((acc, i) =>
+            acc + (safeParseFloat(i.boxPrice) / (safeParseFloat(i.boxQty) || 1) * safeParseFloat(i.usedQty)), 0);
 
-        const rawUnitItemsCost = unitItems.reduce((acc, i) => {
-            const cost = (safeParseFloat(i.unitPrice) * safeParseFloat(i.qty));
-            i.totalCost = cost * (1 + (cleanMargin / 100));
-            return acc + cost;
-        }, 0);
-        
+        const rawUnitItemsCost = unitItems.reduce((acc, i) =>
+            acc + (safeParseFloat(i.unitPrice) * safeParseFloat(i.qty)), 0);
+
         const totalTapeMm = pieces.reduce((acc, p) => {
             let perim = 0;
             const len = safeParseFloat(p.length);
@@ -223,13 +198,12 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
             if(p.bandW1) perim += wid; if(p.bandW2) perim += wid;
             return acc + (perim * safeParseFloat(p.qty));
         }, 0);
-        
+        const tapeMeters = totalTapeMm / 1000;
+
         let rawBorderTapeCost = 0;
         if (borderTapes.length > 0) {
             const tape = borderTapes[0];
-            tape.usedLength = (totalTapeMm / 1000).toFixed(2);
-            rawBorderTapeCost = (parseFloat(String(tape.usedLength)) * (safeParseFloat(tape.rollPrice) / (safeParseFloat(tape.rollLength) || 1)));
-            tape.totalCost = rawBorderTapeCost * (1 + (cleanMargin / 100));
+            rawBorderTapeCost = tapeMeters * (safeParseFloat(tape.rollPrice) / (safeParseFloat(tape.rollLength) || 1));
         }
 
         // --- MATEMÁTICA CLARA ---
@@ -237,30 +211,35 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
         const extrasCost = (cleanHelper||0) + (cleanDelivery||0);
 
         // O que realmente sai do bolso do seu pai (Custo Total do Projeto)
-        const totalProjectCost = totalRawMaterialCost + extrasCost; 
+        const totalProjectCost = totalRawMaterialCost + extrasCost;
 
         // Aplica o lucro APENAS em cima da madeira/ferragens
         const materialComLucro = totalRawMaterialCost * (1 + (cleanMargin / 100));
-        
+
         // Preço sugerido pelo sistema (Material com lucro + Frete/Ajudante secos)
-        const grandTotal = materialComLucro + extrasCost; 
-        
-        // Se a caixa "Valor Fechado" tiver algo digitado, sobrepõe tudo. Se não, usa o sugerido.
-        const valorBase = cleanFinalPrice || grandTotal;
-        const finalValue = valorBase - (valorBase * (cleanDiscount/100));
-        
+        const grandTotal = materialComLucro + extrasCost;
+
+        // Se "Forçar Preço Final" tiver valor, ele É o valor final (ignora o cálculo
+        // automático, inclusive o desconto). O desconto % só age no preço sugerido.
+        const subtotalBeforeDiscount = cleanFinalPrice > 0 ? cleanFinalPrice : grandTotal;
+        const discountAmount = cleanFinalPrice > 0 ? 0 : grandTotal * (cleanDiscount / 100);
+        const finalValue = subtotalBeforeDiscount - discountAmount;
+
         // O lucro limpo é o que o cliente pagou de fato, menos o que custou pra fazer
         const estimatedProfit = finalValue - totalProjectCost;
 
-        return { 
-            grandTotal, 
-            subtotal: materialComLucro, 
+        return {
+            grandTotal,
+            subtotal: materialComLucro,
             rawMaterialCost: totalRawMaterialCost,
-            finalHelperCost: cleanHelper||0, 
+            finalHelperCost: cleanHelper||0,
             finalDeliveryFee: cleanDelivery||0,
-            totalProjectCost, 
+            totalProjectCost,
             estimatedProfit,
-            finalValue
+            finalValue,
+            subtotalBeforeDiscount,
+            discountAmount,
+            tapeMeters
         };
     }, [pieces, sheets, profitMargin, helperCost, deliveryFee, finalBudgetPrice, discountPercentage, hardware, unitItems, borderTapes]);
 
@@ -293,12 +272,16 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
         if (!clientName) return toast.error('Nome obrigatório.');
         try {
             const logo = await getImageBase64(logoDaEmpresa);
-            const data = { 
-                ...totals, budgetId, clientName, clientPhone, projectName, description, 
-                discountPercentage: unmaskNumber(discountPercentage), pieces, hardware, 
-                unitItems, borderTapes, createdAt: new Date().toISOString(), 
-                finalBudgetPrice: unmaskMoney(finalBudgetPrice) || totals.finalValue, 
-                qrCodeImage: qrCodeBase64 
+            // Injeta o comprimento de fita usado (calculado em totals) para exibir no PDF
+            const tapesForPdf = borderTapes.map((t, idx) => idx === 0
+                ? { ...t, usedLength: totals.tapeMeters.toFixed(2) }
+                : t);
+            const data = {
+                ...totals, budgetId, clientName, clientPhone, projectName, description,
+                discountPercentage: unmaskNumber(discountPercentage), pieces, hardware,
+                unitItems, borderTapes: tapesForPdf, createdAt: new Date().toISOString(),
+                finalBudgetPrice: unmaskMoney(finalBudgetPrice) || totals.finalValue,
+                qrCodeImage: qrCodeBase64
             };
             generateBudgetPdf(data, DADOS_DA_EMPRESA, logo);
         } catch (e) { toast.error("Erro no PDF."); }
@@ -309,14 +292,19 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
         setIsLoadingPlan(true);
         setTimeout(() => {
             const pArr = pieces.map(p => ({
-                ...p, 
-                length: parseFloat(String(p.length)), 
-                width: parseFloat(String(p.width)), 
-                qty: parseInt(String(p.qty))
+                ...p,
+                length: parseFloat(String(p.length)),
+                width: parseFloat(String(p.width)),
+                qty: Math.max(1, parseInt(String(p.qty)) || 1)
             })).flatMap(p => Array.from({length: p.qty}, (_, i) => ({...p, uniqueId: `${p.id}-${i}`})));
-            
-            setLandscapePlan(cuttingOptimizer([...pArr], sheets.map(s=>({...s}))));
-            setPortraitPlan(cuttingOptimizer([...pArr], sheets.map(s=>({...s, length: s.width, width: s.length, name: s.name+' (Vert)'}))));
+
+            const plan = generateCuttingPlan(pArr, sheets, cuttingGap);
+            if (plan.error) {
+                toast.error(plan.error);
+                setCuttingPlan(null);
+            } else {
+                setCuttingPlan(plan);
+            }
             setIsLoadingPlan(false);
         }, 100);
     };
@@ -351,12 +339,13 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
                 
                 <SheetManager sheets={sheets} setSheets={setSheets} catalogSheets={catalogSheets} />
                 
-                <PieceManager 
-                    pieces={pieces as any} setPieces={setPieces as any} 
-                    sheets={sheets as any} pieceForm={pieceForm as any} 
-                    setPieceForm={setPieceForm as any} initialPieceForm={initialPieceForm as any} 
-                    onEdit={(piece: any) => setPieceForm(piece)} 
-                    onDelete={(id: string) => setPieces(p => p.filter(i => i.id !== id))} 
+                <PieceManager
+                    pieces={pieces as any} setPieces={setPieces as any}
+                    sheets={sheets as any} pieceForm={pieceForm as any}
+                    setPieceForm={setPieceForm as any} initialPieceForm={initialPieceForm as any}
+                    profitMargin={profitMargin}
+                    onEdit={(piece: any) => setPieceForm(piece)}
+                    onDelete={(id: string) => setPieces(p => p.filter(i => i.id !== id))}
                 />
                 
                 <ExtrasManager 
@@ -368,16 +357,37 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
                 {/* --- PLANO DE CORTE --- */}
                 <div className="bg-white p-5 md:p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col gap-4">
                     <h2 className="text-xl font-extrabold text-gray-800 tracking-tight">Plano de Corte</h2>
-                    <button 
-                        onClick={handlePlan} 
-                        disabled={isLoadingPlan} 
+
+                    {/* Folga de serra (kerf) */}
+                    <div className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3">
+                        <div className="flex flex-col">
+                            <span className="text-sm font-bold text-gray-700">Folga de serra</span>
+                            <span className="text-xs text-gray-400">Espessura do disco (perda por corte)</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                            <input
+                                type="number" min={0} max={20} step={1}
+                                value={cuttingGap}
+                                onChange={e => setCuttingGap(Math.max(0, Math.min(20, parseInt(e.target.value) || 0)))}
+                                className="w-16 h-11 text-center font-bold text-gray-800 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                            />
+                            <span className="font-bold text-gray-400 text-sm">mm</span>
+                        </div>
+                    </div>
+
+                    <button
+                        onClick={handlePlan}
+                        disabled={isLoadingPlan}
                         className="w-full py-4 bg-indigo-50 text-indigo-700 font-bold rounded-2xl border border-indigo-100 hover:bg-indigo-100 transition-colors active:scale-95"
                     >
                         {isLoadingPlan ? 'Calculando a melhor rota...' : 'Gerar Visualização de Corte'}
                     </button>
-                    {(landscapePlan || portraitPlan) && (
-                        <div className="mt-2 rounded-xl overflow-hidden border border-gray-200">
-                            {landscapePlan && <CuttingPlanCanvas cuttingPlan={landscapePlan} />}
+                    {cuttingPlan && cuttingPlan.usedSheets && cuttingPlan.usedSheets.length > 0 && (
+                        <div className="mt-2">
+                            <CuttingPlanCanvas
+                                cuttingPlan={cuttingPlan}
+                                meta={{ projectName, clientName, clientPhone, budgetId }}
+                            />
                         </div>
                     )}
                 </div>

@@ -1,21 +1,24 @@
 import React, { useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { EditIcon, TrashIcon } from '../icons';
-import { formatCurrency } from '../../utils/helpers';
+import { formatCurrency, calcPieceRawCost } from '../../utils/helpers';
 import { maskMeasure, unmaskNumber } from '../../utils/masks';
 import Modal from '../Modal';
 
 // === TYPESCRIPT ===
 interface Sheet { id: string; name: string; [key: string]: any; }
-interface Piece { id: string | null; name: string; length: string | number; width: string | number; qty: string | number; sheetId: string; bandL1: boolean; bandL2: boolean; bandW1: boolean; bandW2: boolean; totalCost?: number; }
+interface Piece { id: string | null; name: string; length: string | number; width: string | number; qty: string | number; sheetId: string; bandL1: boolean; bandL2: boolean; bandW1: boolean; bandW2: boolean; grainLock?: boolean; totalCost?: number; }
 
 interface PieceManagerProps {
     pieces: Piece[]; setPieces: React.Dispatch<React.SetStateAction<Piece[]>>;
     sheets: Sheet[]; pieceForm: Piece; setPieceForm: React.Dispatch<React.SetStateAction<Piece>>;
     initialPieceForm: Piece; onEdit: (piece: any) => void; onDelete: (id: string) => void;
+    profitMargin: string | number;
 }
 
-const PieceManager: React.FC<PieceManagerProps> = ({ pieces, setPieces, sheets, pieceForm, setPieceForm, initialPieceForm, onEdit, onDelete }) => {
+const PieceManager: React.FC<PieceManagerProps> = ({ pieces, setPieces, sheets, pieceForm, setPieceForm, initialPieceForm, onEdit, onDelete, profitMargin }) => {
+    const marginFactor = 1 + (unmaskNumber(profitMargin) / 100);
+    const pieceCost = (p: Piece) => calcPieceRawCost(p, sheets.find(s => s.id === p.sheetId)) * marginFactor;
     const formRef = useRef<HTMLDivElement>(null);
     const [actionModal, setActionModal] = useState<{ isOpen: boolean, piece: Piece | null }>({ isOpen: false, piece: null });
 
@@ -98,6 +101,21 @@ const PieceManager: React.FC<PieceManagerProps> = ({ pieces, setPieces, sheets, 
                         </div>
                     </div>
                 </div>
+                {/* Travar veio (grão) da madeira */}
+                <button
+                    type="button"
+                    onClick={() => setPieceForm(prev => ({ ...prev, grainLock: !prev.grainLock }))}
+                    className={`flex items-center justify-between w-full px-4 py-3 rounded-2xl border transition-all ${pieceForm.grainLock ? 'bg-amber-50 border-amber-300' : 'bg-gray-50 border-gray-200'}`}
+                >
+                    <div className="flex flex-col text-left">
+                        <span className="text-sm font-bold text-gray-700">Travar sentido do veio</span>
+                        <span className="text-xs text-gray-400">{pieceForm.grainLock ? 'A peça NÃO será girada no corte' : 'A peça pode girar p/ melhor aproveitamento'}</span>
+                    </div>
+                    <div className={`w-12 h-7 rounded-full p-1 transition-colors shrink-0 ${pieceForm.grainLock ? 'bg-amber-500' : 'bg-gray-300'}`}>
+                        <div className={`w-5 h-5 bg-white rounded-full shadow transition-transform ${pieceForm.grainLock ? 'translate-x-5' : ''}`} />
+                    </div>
+                </button>
+
                 {/* (Seletor de fitas e lista de peças permanecem iguais visualmente pois já usavam boxes fixos) */}
                 <div className="bg-gray-50 border border-dashed border-gray-300 rounded-2xl p-4 mt-2 flex flex-col items-center"> <label className="text-sm font-bold text-gray-600 mb-6 text-center">Marcar onde aplicar Fita de Borda<br/><span className="text-xs text-gray-400 font-normal">(Toque nas laterais do desenho)</span></label> <div className="relative w-48 h-48 sm:w-56 sm:h-56 select-none"> <div className="absolute inset-5 bg-amber-100 border-2 border-amber-300 rounded-lg flex items-center justify-center pointer-events-none shadow-inner"><span className="text-amber-700/50 font-black text-xl rotate-45">MDF</span></div> <div onClick={() => toggleEdge('bandL1')} className={`absolute top-0 left-5 right-5 h-6 rounded-t-xl cursor-pointer transition-all flex items-center justify-center ${pieceForm.bandL1 ? 'bg-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.5)] scale-105 z-10' : 'bg-gray-300 hover:bg-gray-400'}`}><span className="text-[10px] font-bold text-white uppercase">C1</span></div> <div onClick={() => toggleEdge('bandL2')} className={`absolute bottom-0 left-5 right-5 h-6 rounded-b-xl cursor-pointer transition-all flex items-center justify-center ${pieceForm.bandL2 ? 'bg-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.5)] scale-105 z-10' : 'bg-gray-300 hover:bg-gray-400'}`}><span className="text-[10px] font-bold text-white uppercase">C2</span></div> <div onClick={() => toggleEdge('bandW1')} className={`absolute left-0 top-5 bottom-5 w-6 rounded-l-xl cursor-pointer transition-all flex items-center justify-center ${pieceForm.bandW1 ? 'bg-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.5)] scale-105 z-10' : 'bg-gray-300 hover:bg-gray-400'}`}><span className="text-[10px] font-bold text-white uppercase -rotate-90">L1</span></div> <div onClick={() => toggleEdge('bandW2')} className={`absolute right-0 top-5 bottom-5 w-6 rounded-r-xl cursor-pointer transition-all flex items-center justify-center ${pieceForm.bandW2 ? 'bg-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.5)] scale-105 z-10' : 'bg-gray-300 hover:bg-gray-400'}`}><span className="text-[10px] font-bold text-white uppercase rotate-90">L2</span></div> </div> </div>
                 <button type="submit" className="w-full h-16 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-extrabold rounded-2xl shadow-lg shadow-emerald-500/30 transition-all active:scale-[0.98] text-lg mt-2"> {pieceForm.id ? 'Atualizar Peça Salva' : '+ Adicionar Peça'} </button>
@@ -111,9 +129,12 @@ const PieceManager: React.FC<PieceManagerProps> = ({ pieces, setPieces, sheets, 
                             <div className="flex flex-col">
                                 <strong className="text-gray-900 font-bold text-lg leading-tight">{p.name}</strong>
                                 <span className="text-sm text-gray-600 font-medium mt-1">{p.length} x {p.width} mm</span>
-                                <span className="bg-blue-100 text-blue-800 text-[10px] font-extrabold px-2.5 py-1 rounded-md w-fit mt-1.5">x{p.qty} un</span>
+                                <div className="flex gap-1.5 mt-1.5">
+                                    <span className="bg-blue-100 text-blue-800 text-[10px] font-extrabold px-2.5 py-1 rounded-md w-fit">x{p.qty} un</span>
+                                    {p.grainLock && <span className="bg-amber-100 text-amber-800 text-[10px] font-extrabold px-2.5 py-1 rounded-md w-fit">veio ↕</span>}
+                                </div>
                             </div>
-                            <div className="font-extrabold text-gray-950 text-right">{formatCurrency(p.totalCost || 0)}</div>
+                            <div className="font-extrabold text-gray-950 text-right">{formatCurrency(pieceCost(p))}</div>
                         </div>
                     ))}
                 </div>

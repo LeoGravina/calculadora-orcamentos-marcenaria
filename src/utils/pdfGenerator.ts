@@ -123,9 +123,9 @@ const generateBudgetPdf = (budget: any, companyInfo: any, companyLogo: string) =
     
     let finalY = (doc as any).lastAutoTable.finalY + 5;
     
-    const subTotalFinal = budget.finalBudgetPrice || budget.grandTotal;
-    const descontoFinal = budget.finalDiscountAmount || budget.finalDiscount || 0;
-    const totalFinal = budget.finalValue || budget.grandTotal;
+    const subTotalFinal = budget.subtotalBeforeDiscount ?? budget.finalBudgetPrice ?? budget.grandTotal;
+    const descontoFinal = budget.discountAmount || 0;
+    const totalFinal = budget.finalValue ?? budget.grandTotal;
 
     const discountLabel = `DESCONTO (${budget.discountPercentage || 0}%)`;
 
