@@ -1,5 +1,9 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+} from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: process.env.REACT_APP_API_KEY as string,
@@ -13,4 +17,16 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-export const db = getFirestore(app);
+// Persistência offline: lê/escreve no cache local e sincroniza quando a rede volta.
+// Com fallback caso o ambiente não suporte IndexedDB (ex.: aba privada).
+let firestore;
+try {
+  firestore = initializeFirestore(app, {
+    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+  });
+} catch (e) {
+  // Fallback sem cache persistente
+  firestore = initializeFirestore(app, {});
+}
+
+export const db = firestore;

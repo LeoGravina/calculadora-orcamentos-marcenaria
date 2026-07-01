@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
-import { formatCurrency } from '../../utils/helpers';
-import { maskCurrency, unmaskMoney, maskMeasure, unmaskNumber } from '../../utils/masks'; 
-import Modal from '../Modal';
+import { maskCurrency, unmaskMoney, maskMeasure, unmaskNumber } from '../../utils/masks';
 
 // === TYPESCRIPT ===
 interface MaterialItem { id: string; catalogId?: string; name?: string; qty?: string | number; usedQty?: string | number; unitPrice?: string | number; boxPrice?: string | number; totalCost?: number; isLocal?: boolean; [key: string]: any; }
@@ -11,7 +9,6 @@ interface MaterialSectionProps { title: string; items: MaterialItem[]; setItems:
 const MaterialSection: React.FC<MaterialSectionProps> = ({ title, items, setItems, catalogItems, typeLabel, formFields }) => {
     const [activeTab, setActiveTab] = useState<'catalog' | 'manual'>('catalog');
     const [form, setForm] = useState<any>({ id: null, catalogId: '', qty: '', usedQty: '', ...formFields });
-    const [actionModal, setActionModal] = useState<{ isOpen: boolean, item: MaterialItem | null }>({ isOpen: false, item: null });
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -78,7 +75,32 @@ const MaterialSection: React.FC<MaterialSectionProps> = ({ title, items, setItem
                     <button type="submit" className="h-14 flex-1 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-extrabold rounded-2xl active:scale-[0.98] transition-all text-lg">Salvar</button>
                 </div>
             </form>
-            {/* ... List ... */}
+
+            {/* Lista de itens adicionados */}
+            {items.length > 0 && (
+                <div className="mt-5 flex flex-col gap-2 border-t-2 border-gray-50 pt-4">
+                    {items.map(item => (
+                        <div key={item.id} className="flex justify-between items-center bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
+                            <div className="flex flex-col min-w-0">
+                                <span className="font-bold text-gray-800 text-sm truncate">{item.name || 'Sem nome'}</span>
+                                <span className="text-xs text-gray-500">
+                                    {typeLabel === 'Ferragem'
+                                        ? `${item.usedQty || 0} un usadas`
+                                        : `${item.qty || 0} un`}
+                                    {item.isLocal ? ' • Local' : ' • Catálogo'}
+                                </span>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setItems(prev => prev.filter(i => i.id !== item.id))}
+                                className="ml-3 shrink-0 px-3 py-2 bg-red-50 text-red-600 font-bold text-xs rounded-lg hover:bg-red-100 transition-colors active:scale-95"
+                            >
+                                Excluir
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
     );
 };

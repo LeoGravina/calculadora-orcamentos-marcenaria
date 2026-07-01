@@ -26,6 +26,23 @@ const SheetManager: React.FC<SheetManagerProps> = ({ sheets, setSheets, catalogS
         setManualForm({ name: '', price: '', length: '', width: '', id: null }); setActiveTab('select');
     };
 
+    const handleEditSheet = (sheet: Sheet) => {
+        setManualForm({
+            name: sheet.name || '',
+            price: sheet.price ? maskCurrency(Number(sheet.price).toFixed(2)) : '',
+            length: sheet.length ? String(sheet.length) : '',
+            width: sheet.width ? String(sheet.width) : '',
+            id: sheet.id,
+        });
+        setActiveTab('manual');
+        setActionModal({ isOpen: false, sheet: null });
+    };
+
+    const handleDeleteSheet = (sheet: Sheet) => {
+        setSheets(prev => prev.filter(s => s.id !== sheet.id));
+        setActionModal({ isOpen: false, sheet: null });
+    };
+
     return (
         <div className="bg-white p-5 md:p-6 rounded-3xl shadow-sm border border-gray-100 mt-6 overflow-hidden">
             <h2 className="text-xl font-extrabold text-gray-800 border-b-2 border-gray-50 pb-3 mb-4 tracking-tight">Chapas do Orçamento</h2>
@@ -39,7 +56,12 @@ const SheetManager: React.FC<SheetManagerProps> = ({ sheets, setSheets, catalogS
 
             <div>
                 {activeTab === 'select' && (
-                    <div className="flex flex-col gap-3 md:hidden">
+                    <div className="flex flex-col gap-3">
+                        {sheets.length === 0 && (
+                            <div className="text-center py-8 bg-gray-50 rounded-2xl border border-dashed border-gray-300">
+                                <p className="text-gray-400 font-medium text-sm">Nenhuma chapa no orçamento ainda.</p>
+                            </div>
+                        )}
                         {sheets.map(s => (
                             <div key={s.id} onClick={() => setActionModal({ isOpen: true, sheet: s })} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm active:scale-[0.98] transition-transform border-l-4 border-l-emerald-500 flex justify-between items-center cursor-pointer">
                                 <div className="flex flex-col">
@@ -79,7 +101,28 @@ const SheetManager: React.FC<SheetManagerProps> = ({ sheets, setSheets, catalogS
                     </form>
                 )}
             </div>
-            {/* Action modal ... */}
+
+            <Modal
+                isOpen={actionModal.isOpen}
+                onClose={() => setActionModal({ isOpen: false, sheet: null })}
+                title={`Chapa: ${actionModal.sheet?.name || ''}`}
+                footer={<button onClick={() => setActionModal({ isOpen: false, sheet: null })} className="w-full py-3 bg-gray-100 font-bold rounded-xl hover:bg-gray-200 transition-colors">Fechar</button>}
+            >
+                <div className="flex flex-col gap-3 pb-2">
+                    <button
+                        onClick={() => actionModal.sheet && handleEditSheet(actionModal.sheet)}
+                        className="flex items-center p-4 w-full text-left font-bold border border-gray-200 rounded-xl bg-white hover:bg-amber-50 border-l-4 border-l-amber-500 text-amber-700 transition-all shadow-sm"
+                    >
+                        Editar Chapa
+                    </button>
+                    <button
+                        onClick={() => actionModal.sheet && handleDeleteSheet(actionModal.sheet)}
+                        className="flex items-center p-4 w-full text-left font-bold border border-gray-200 rounded-xl bg-white hover:bg-red-50 border-l-4 border-l-red-500 text-red-700 transition-all shadow-sm"
+                    >
+                        Remover do Orçamento
+                    </button>
+                </div>
+            </Modal>
         </div>
     );
 };

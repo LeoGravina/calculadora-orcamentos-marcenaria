@@ -9,3 +9,10 @@ root.render(
     <App />
   </React.StrictMode>
 );
+
+// Registra o Service Worker (PWA instalável + offline) só em produção
+if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => { /* ignora falha de registro */ });
+  });
+}

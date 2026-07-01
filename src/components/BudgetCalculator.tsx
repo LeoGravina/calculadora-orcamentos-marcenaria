@@ -55,8 +55,15 @@ interface BudgetCalculatorProps {
     logoDaEmpresa: string;
 }
 
-const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({ 
-    setCurrentPage, budgetToEdit, clearEditingBudget, db, DADOS_DA_EMPRESA, logoDaEmpresa 
+const DRAFT_KEY = 'mvmoveis_orcamento_rascunho';
+// Só vale a pena restaurar se tiver cliente ou peças (não só o catálogo de chapas)
+const draftHasContent = (d: any) => !!d && (
+    !!(d.clientName && String(d.clientName).trim()) ||
+    (Array.isArray(d.pieces) && d.pieces.length > 0)
+);
+
+const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
+    setCurrentPage, budgetToEdit, clearEditingBudget, db, DADOS_DA_EMPRESA, logoDaEmpresa
 }) => {
     
     // === ESTADOS ===
@@ -87,6 +94,8 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
     const [isLoadingPlan, setIsLoadingPlan] = useState(false);
     const [cuttingPlan, setCuttingPlan] = useState<any>(null);
     const [cuttingGap, setCuttingGap] = useState<number>(3);
+    const [draftFound, setDraftFound] = useState<any>(null);
+    const [autosaveOn, setAutosaveOn] = useState(false);
 
     const initialPieceForm: Piece = useMemo(() => ({
         name: "", length: "", width: "", qty: 1, sheetId: '',
@@ -101,6 +110,36 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
         } else {
             setCurrentPage('home');
         }
+    };
+
+    const continueDraft = () => {
+        const d = draftFound;
+        if (d) {
+            setClientName(d.clientName || '');
+            setClientPhone(d.clientPhone || '');
+            setProjectName(d.projectName || '');
+            setDescription(d.description || '');
+            setProfitMargin(d.profitMargin ?? 180);
+            setHelperCost(d.helperCost ?? '');
+            setDeliveryFee(d.deliveryFee ?? '');
+            setDiscountPercentage(d.discountPercentage ?? 0);
+            setFinalBudgetPrice(d.finalBudgetPrice || '');
+            setSheets(d.sheets || []);
+            setPieces(d.pieces || []);
+            setBorderTapes(d.borderTapes || []);
+            setUnitItems(d.unitItems || []);
+            setHardware(d.hardware || []);
+            setCuttingGap(d.cuttingGap ?? 3);
+        }
+        setDraftFound(null);
+        setAutosaveOn(true);
+    };
+
+    const discardDraft = () => {
+        try { localStorage.removeItem(DRAFT_KEY); } catch (e) { /* ignora */ }
+        setDraftFound(null);
+        setAutosaveOn(true);
+        setSheets([]);
     };
 
     // === CARREGAR CATÁLOGOS ===
@@ -150,9 +189,36 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
                 } catch (e) { console.error(e); }
             };
             fetchId();
-            setSheets([]); // Começa vazio para novos orçamentos
+
+            // Procura um rascunho local não salvo
+            let hasDraft = false;
+            try {
+                const raw = localStorage.getItem(DRAFT_KEY);
+                if (raw) {
+                    const draft = JSON.parse(raw);
+                    if (draftHasContent(draft)) { setDraftFound(draft); hasDraft = true; }
+                    else { localStorage.removeItem(DRAFT_KEY); }
+                }
+            } catch (e) { /* localStorage indisponível */ }
+
+            // Sem rascunho: começa vazio e já liga o autosave
+            if (!hasDraft) { setAutosaveOn(true); setSheets([]); }
         }
     }, [budgetToEdit, db]);
+
+    // === SALVAMENTO AUTOMÁTICO LOCAL (RASCUNHO) ===
+    useEffect(() => {
+        if (!autosaveOn || editingId) return; // não cria rascunho ao editar um orçamento salvo
+        const draft = {
+            clientName, clientPhone, projectName, description,
+            profitMargin, helperCost, deliveryFee, discountPercentage, finalBudgetPrice,
+            sheets, pieces, borderTapes, unitItems, hardware, cuttingGap,
+            savedAt: Date.now()
+        };
+        try { localStorage.setItem(DRAFT_KEY, JSON.stringify(draft)); } catch (e) { /* ignora */ }
+    }, [autosaveOn, editingId, clientName, clientPhone, projectName, description,
+        profitMargin, helperCost, deliveryFee, discountPercentage, finalBudgetPrice,
+        sheets, pieces, borderTapes, unitItems, hardware, cuttingGap]);
 
     // === SINCRONIZAR NOVOS ITENS DO CATÁLOGO (A MÁGICA) ===
     useEffect(() => {
@@ -262,6 +328,7 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
             if (editingId) await updateDoc(doc(db, "budgets", editingId), data);
             else await addDoc(collection(db, "budgets"), data);
             
+            try { localStorage.removeItem(DRAFT_KEY); } catch (e) { /* ignora */ }
             toast.success('Salvo!', { id: toastId });
             clearEditingBudget();
             setCurrentPage('saved');
@@ -326,8 +393,30 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
             </header>
 
             <main className="flex flex-col gap-6 w-full max-w-3xl px-4">
-                
-                <ClientForm 
+
+                {draftFound && (
+                    <div className="bg-amber-50 border-2 border-amber-200 rounded-3xl p-5 flex flex-col gap-3 shadow-sm">
+                        <div>
+                            <h3 className="font-extrabold text-amber-900 text-lg tracking-tight">Orçamento em andamento</h3>
+                            <p className="text-sm text-amber-700 font-medium mt-0.5">
+                                Encontramos um rascunho não salvo
+                                {draftFound.clientName ? ` de "${draftFound.clientName}"` : ''}
+                                {draftFound.savedAt ? ` (${new Date(draftFound.savedAt).toLocaleString('pt-BR')})` : ''}.
+                                Deseja continuar de onde parou?
+                            </p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <button onClick={continueDraft} className="py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-2xl transition-colors active:scale-[0.98]">
+                                Continuar
+                            </button>
+                            <button onClick={discardDraft} className="py-3 bg-white border border-amber-200 text-amber-700 font-bold rounded-2xl hover:bg-amber-100 transition-colors active:scale-[0.98]">
+                                Descartar
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                <ClientForm
                     clientName={clientName} setClientName={setClientName} 
                     clientPhone={clientPhone} setClientPhone={setClientPhone} 
                     projectName={projectName} setProjectName={setProjectName} 

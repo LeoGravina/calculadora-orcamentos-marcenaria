@@ -152,7 +152,10 @@ const CuttingPlanCanvas: React.FC<CuttingPlanProps> = ({ cuttingPlan, meta = {} 
         setTransform({ x: cw * 0.04, y: Math.max(16, (CANVAS_H - drawH) / 2), scale: fitScale });
     };
 
-    useEffect(() => { fitView(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [current, planState?.usedSheets?.length]);
+    useEffect(() => {
+        fitView();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [current, planState?.usedSheets?.length]);
 
     useEffect(() => {
         const canvas = canvasRef.current;
