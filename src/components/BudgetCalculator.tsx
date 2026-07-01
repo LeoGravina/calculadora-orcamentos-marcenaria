@@ -1,6 +1,7 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { doc, getDoc, addDoc, updateDoc, collection, getDocs, Firestore } from 'firebase/firestore';
 import toast from 'react-hot-toast';
+import { User, Layers, Ruler, Wrench, Scissors, Receipt } from 'lucide-react';
 
 // Componentes
 import ClientForm from './budget/ClientForm';
@@ -56,6 +57,16 @@ interface BudgetCalculatorProps {
 }
 
 const DRAFT_KEY = 'mvmoveis_orcamento_rascunho';
+
+// Seções navegáveis do formulário de orçamento
+const SECTIONS = [
+    { id: 'sec-cliente', label: 'Cliente', icon: User },
+    { id: 'sec-chapas', label: 'Chapas', icon: Layers },
+    { id: 'sec-pecas', label: 'Peças', icon: Ruler },
+    { id: 'sec-extras', label: 'Extras', icon: Wrench },
+    { id: 'sec-corte', label: 'Corte', icon: Scissors },
+    { id: 'sec-resumo', label: 'Resumo', icon: Receipt },
+];
 // Só vale a pena restaurar se tiver cliente ou peças (não só o catálogo de chapas)
 const draftHasContent = (d: any) => !!d && (
     !!(d.clientName && String(d.clientName).trim()) ||
@@ -96,12 +107,36 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
     const [cuttingGap, setCuttingGap] = useState<number>(3);
     const [draftFound, setDraftFound] = useState<any>(null);
     const [autosaveOn, setAutosaveOn] = useState(false);
+    const [activeSection, setActiveSection] = useState<string>('sec-cliente');
+    // Guarda o layout atual do plano de corte (com arrastes manuais) para salvar
+    const cuttingPlanRef = useRef<any>(null);
+    const handlePlanChange = useCallback((plan: any) => { cuttingPlanRef.current = plan; }, []);
 
     const initialPieceForm: Piece = useMemo(() => ({
         name: "", length: "", width: "", qty: 1, sheetId: '',
         bandL1: false, bandL2: false, bandW1: false, bandW2: false, grainLock: false, id: null
     }), []);
     const [pieceForm, setPieceForm] = useState<Piece>(initialPieceForm);
+
+    // Destaca a seção visível conforme rola a página
+    useEffect(() => {
+        const observer = new IntersectionObserver((entries) => {
+            const visible = entries
+                .filter(e => e.isIntersecting)
+                .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
+            if (visible.length) setActiveSection(visible[0].target.id);
+        }, { rootMargin: '-20% 0px -65% 0px', threshold: [0, 0.2, 0.5, 1] });
+
+        SECTIONS.forEach(s => {
+            const el = document.getElementById(s.id);
+            if (el) observer.observe(el);
+        });
+        return () => observer.disconnect();
+    }, []);
+
+    const scrollToSection = (id: string) => {
+        document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
 
     const handleBack = () => {
         clearEditingBudget();
@@ -180,6 +215,11 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
             setHardware(budgetToEdit.hardware || []);
             setUnitItems(budgetToEdit.unitItems || []);
             setBorderTapes(budgetToEdit.borderTapes || []);
+
+            // Restaura o plano de corte salvo (com o layout ajustado) e a folga de serra
+            setCuttingGap(budgetToEdit.cuttingGap ?? 3);
+            setCuttingPlan(budgetToEdit.cuttingPlan || null);
+            cuttingPlanRef.current = budgetToEdit.cuttingPlan || null;
         } else {
             const fetchId = async () => {
                 if(!db) return;
@@ -319,10 +359,13 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
                 budgetId, clientName, clientPhone, projectName, description, 
                 profitMargin: unmaskNumber(profitMargin), 
                 discountPercentage: unmaskNumber(discountPercentage),
-                sheets, pieces, hardware, unitItems, borderTapes, 
-                createdAt: new Date().toISOString(), status: budgetToEdit?.status || 'Pendente', 
-                ...totals, 
-                finalBudgetPrice: unmaskMoney(finalBudgetPrice) || totals.finalValue
+                sheets, pieces, hardware, unitItems, borderTapes,
+                createdAt: new Date().toISOString(), status: budgetToEdit?.status || 'Pendente',
+                ...totals,
+                finalBudgetPrice: unmaskMoney(finalBudgetPrice) || totals.finalValue,
+                cuttingGap,
+                // Layout do plano de corte (limpo de undefined para o Firestore)
+                cuttingPlan: cuttingPlanRef.current ? JSON.parse(JSON.stringify(cuttingPlanRef.current)) : null
             };
             
             if (editingId) await updateDoc(doc(db, "budgets", editingId), data);
@@ -369,8 +412,10 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
             if (plan.error) {
                 toast.error(plan.error);
                 setCuttingPlan(null);
+                cuttingPlanRef.current = null;
             } else {
                 setCuttingPlan(plan);
+                cuttingPlanRef.current = plan;
             }
             setIsLoadingPlan(false);
         }, 100);
@@ -394,6 +439,34 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
 
             <main className="flex flex-col gap-6 w-full max-w-3xl px-4">
 
+                {/* Navegação rápida entre seções (fixa no topo) */}
+                <nav className="sticky top-0 z-30 -mx-4 px-2 bg-white/85 backdrop-blur-xl border-b border-gray-200/80 shadow-sm">
+                    <div className="flex justify-between overflow-x-auto hide-scrollbar">
+                        {SECTIONS.map(s => {
+                            const Icon = s.icon;
+                            const active = activeSection === s.id;
+                            return (
+                                <button
+                                    key={s.id}
+                                    onClick={() => scrollToSection(s.id)}
+                                    aria-label={s.label}
+                                    className="relative flex flex-col items-center justify-center gap-1 px-3 py-2.5 min-w-[58px] shrink-0 group"
+                                >
+                                    <Icon
+                                        size={20}
+                                        className={`transition-colors duration-200 ${active ? 'text-indigo-600' : 'text-gray-400 group-hover:text-gray-600'}`}
+                                        strokeWidth={active ? 2.4 : 2}
+                                    />
+                                    <span className={`text-[11px] font-bold tracking-tight transition-colors duration-200 ${active ? 'text-indigo-600' : 'text-gray-400 group-hover:text-gray-600'}`}>
+                                        {s.label}
+                                    </span>
+                                    <span className={`absolute bottom-0 left-1/2 -translate-x-1/2 h-[3px] rounded-t-full bg-indigo-600 transition-all duration-300 ${active ? 'w-7 opacity-100' : 'w-0 opacity-0'}`} />
+                                </button>
+                            );
+                        })}
+                    </div>
+                </nav>
+
                 {draftFound && (
                     <div className="bg-amber-50 border-2 border-amber-200 rounded-3xl p-5 flex flex-col gap-3 shadow-sm">
                         <div>
@@ -416,18 +489,23 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
                     </div>
                 )}
 
+                <section id="sec-cliente" className="scroll-mt-24">
                 <ClientForm
-                    clientName={clientName} setClientName={setClientName} 
-                    clientPhone={clientPhone} setClientPhone={setClientPhone} 
-                    projectName={projectName} setProjectName={setProjectName} 
-                    profitMargin={profitMargin} setProfitMargin={setProfitMargin} 
-                    helperCost={helperCost} setHelperCost={setHelperCost} 
-                    deliveryFee={deliveryFee} setDeliveryFee={setDeliveryFee} 
-                    description={description} setDescription={setDescription} 
+                    clientName={clientName} setClientName={setClientName}
+                    clientPhone={clientPhone} setClientPhone={setClientPhone}
+                    projectName={projectName} setProjectName={setProjectName}
+                    profitMargin={profitMargin} setProfitMargin={setProfitMargin}
+                    helperCost={helperCost} setHelperCost={setHelperCost}
+                    deliveryFee={deliveryFee} setDeliveryFee={setDeliveryFee}
+                    description={description} setDescription={setDescription}
                 />
-                
+                </section>
+
+                <section id="sec-chapas" className="scroll-mt-24">
                 <SheetManager sheets={sheets} setSheets={setSheets} catalogSheets={catalogSheets} />
-                
+                </section>
+
+                <section id="sec-pecas" className="scroll-mt-24">
                 <PieceManager
                     pieces={pieces as any} setPieces={setPieces as any}
                     sheets={sheets as any} pieceForm={pieceForm as any}
@@ -436,15 +514,18 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
                     onEdit={(piece: any) => setPieceForm(piece)}
                     onDelete={(id: string) => setPieces(p => p.filter(i => i.id !== id))}
                 />
-                
-                <ExtrasManager 
-                    borderTapes={borderTapes} setBorderTapes={setBorderTapes} catalogEdgeBands={catalogEdgeBands} 
-                    unitItems={unitItems} setUnitItems={setUnitItems} catalogUnitItems={catalogUnitItems} 
-                    hardware={hardware} setHardware={setHardware} catalogHardware={catalogHardware} 
+                </section>
+
+                <section id="sec-extras" className="scroll-mt-24">
+                <ExtrasManager
+                    borderTapes={borderTapes} setBorderTapes={setBorderTapes} catalogEdgeBands={catalogEdgeBands}
+                    unitItems={unitItems} setUnitItems={setUnitItems} catalogUnitItems={catalogUnitItems}
+                    hardware={hardware} setHardware={setHardware} catalogHardware={catalogHardware}
                 />
+                </section>
 
                 {/* --- PLANO DE CORTE --- */}
-                <div className="bg-white p-5 md:p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col gap-4">
+                <div id="sec-corte" className="bg-white p-5 md:p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col gap-4 scroll-mt-24">
                     <h2 className="text-xl font-extrabold text-gray-800 tracking-tight">Plano de Corte</h2>
 
                     {/* Folga de serra (kerf) */}
@@ -476,13 +557,14 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
                             <CuttingPlanCanvas
                                 cuttingPlan={cuttingPlan}
                                 meta={{ projectName, clientName, clientPhone, budgetId }}
+                                onPlanChange={handlePlanChange}
                             />
                         </div>
                     )}
                 </div>
 
                 {/* --- RESUMO FINANCEIRO À PROVA DE CONFUSÃO --- */}
-                <div className="bg-white p-6 md:p-7 rounded-3xl shadow-lg shadow-gray-200/50 border border-gray-100 flex flex-col gap-4 relative overflow-hidden mt-2">
+                <div id="sec-resumo" className="bg-white p-6 md:p-7 rounded-3xl shadow-lg shadow-gray-200/50 border border-gray-100 flex flex-col gap-4 relative overflow-hidden mt-2 scroll-mt-24">
                     <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-blue-400 via-blue-600 to-emerald-500"></div>
                     
                     <h2 className="text-2xl font-black text-gray-950 mb-3 tracking-tighter">Resumo Financeiro</h2>

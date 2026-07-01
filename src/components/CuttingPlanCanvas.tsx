@@ -11,6 +11,7 @@ interface CuttingPlanProps {
         totals?: { sheetCount: number; pieceCount: number; edgeBandingMeters: number };
     } | null;
     meta?: { projectName?: string; clientName?: string; clientPhone?: string; budgetId?: string };
+    onPlanChange?: (plan: any) => void;
 }
 
 const CANVAS_H = 460;
@@ -21,7 +22,7 @@ const normalizePhone = (raw?: string) => {
     return d.length <= 11 ? `55${d}` : d;
 };
 
-const CuttingPlanCanvas: React.FC<CuttingPlanProps> = ({ cuttingPlan, meta = {} }) => {
+const CuttingPlanCanvas: React.FC<CuttingPlanProps> = ({ cuttingPlan, meta = {}, onPlanChange }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -42,6 +43,11 @@ const CuttingPlanCanvas: React.FC<CuttingPlanProps> = ({ cuttingPlan, meta = {} 
         setCurrent(0);
         setSelectedId(null);
     }, [cuttingPlan]);
+
+    // Avisa o pai sobre o layout atual (para salvar junto com o orçamento)
+    useEffect(() => {
+        if (planState) onPlanChange?.(planState);
+    }, [planState, onPlanChange]);
 
     const sheets = planState?.usedSheets || [];
     const sheet = sheets[current];
