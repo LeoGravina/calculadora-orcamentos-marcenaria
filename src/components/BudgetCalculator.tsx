@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { doc, getDoc, addDoc, updateDoc, collection, getDocs, Firestore } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, collection, getDocs, query, orderBy, limit, writeBatch, Firestore } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { User, Layers, Ruler, Wrench, Scissors, Receipt } from 'lucide-react';
 
@@ -72,6 +72,19 @@ const draftHasContent = (d: any) => !!d && (
     !!(d.clientName && String(d.clientName).trim()) ||
     (Array.isArray(d.pieces) && d.pieces.length > 0)
 );
+
+const formatBudgetNumber = (n: number) => String(n).padStart(3, '0');
+
+// Próximo número de orçamento: o maior entre o contador e o último número gravado, + 1.
+// Olhar o último gravado corrige o contador, que ficou um tempo sem ser incrementado.
+const getNextBudgetNumber = async (db: Firestore): Promise<number> => {
+    const [counterSnap, lastSnap] = await Promise.all([
+        getDoc(doc(db, "counters", "budgets")),
+        getDocs(query(collection(db, "budgets"), orderBy("budgetId", "desc"), limit(1)))
+    ]);
+    const lastUsed = parseInt(lastSnap.docs[0]?.data().budgetId, 10) || 0;
+    return Math.max(counterSnap.data()?.lastId || 0, lastUsed) + 1;
+};
 
 const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
     setCurrentPage, budgetToEdit, clearEditingBudget, db, DADOS_DA_EMPRESA, logoDaEmpresa
@@ -196,9 +209,18 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
     // === CARREGAR ORÇAMENTO PARA EDIÇÃO ===
    // === CARREGAR ORÇAMENTO PARA EDIÇÃO ===
     useEffect(() => {
+        const fetchId = async () => {
+            if(!db) return;
+            try {
+                setBudgetId(formatBudgetNumber(await getNextBudgetNumber(db)));
+            } catch (e) { console.error(e); }
+        };
+
         if (budgetToEdit) {
             setEditingId(budgetToEdit.id);
-            setBudgetId(budgetToEdit.budgetId || '');
+            // Duplicata é um orçamento novo: ganha número próprio
+            if (budgetToEdit.isDuplicate) fetchId();
+            else setBudgetId(budgetToEdit.budgetId || '');
             setClientName(budgetToEdit.clientName || '');
             setClientPhone(budgetToEdit.clientPhone || '');
             setProjectName(budgetToEdit.projectName || '');
@@ -221,13 +243,6 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
             setCuttingPlan(budgetToEdit.cuttingPlan || null);
             cuttingPlanRef.current = budgetToEdit.cuttingPlan || null;
         } else {
-            const fetchId = async () => {
-                if(!db) return;
-                try {
-                    const snap = await getDoc(doc(db, "counters", "budgets"));
-                    setBudgetId(String((snap.data()?.lastId || 0) + 1).padStart(3, '0'));
-                } catch (e) { console.error(e); }
-            };
             fetchId();
 
             // Procura um rascunho local não salvo
@@ -360,7 +375,8 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
                 profitMargin: unmaskNumber(profitMargin), 
                 discountPercentage: unmaskNumber(discountPercentage),
                 sheets, pieces, hardware, unitItems, borderTapes,
-                createdAt: new Date().toISOString(), status: budgetToEdit?.status || 'Pendente',
+                // Novo orçamento (inclusive duplicata) sempre começa Pendente
+                createdAt: new Date().toISOString(), status: editingId ? (budgetToEdit?.status || 'Pendente') : 'Pendente',
                 ...totals,
                 finalBudgetPrice: unmaskMoney(finalBudgetPrice) || totals.finalValue,
                 cuttingGap,
@@ -369,7 +385,15 @@ const BudgetCalculator: React.FC<BudgetCalculatorProps> = ({
             };
             
             if (editingId) await updateDoc(doc(db, "budgets", editingId), data);
-            else await addDoc(collection(db, "budgets"), data);
+            else {
+                // Reserva o número na hora de salvar e grava o contador junto com o orçamento
+                let nextNumber = parseInt(budgetId, 10) || 1;
+                try { nextNumber = await getNextBudgetNumber(db); } catch (e) { /* offline sem cache: usa o número exibido */ }
+                const batch = writeBatch(db);
+                batch.set(doc(db, "counters", "budgets"), { lastId: nextNumber }, { merge: true });
+                batch.set(doc(collection(db, "budgets")), { ...data, budgetId: formatBudgetNumber(nextNumber) });
+                await batch.commit();
+            }
             
             try { localStorage.removeItem(DRAFT_KEY); } catch (e) { /* ignora */ }
             toast.success('Salvo!', { id: toastId });
