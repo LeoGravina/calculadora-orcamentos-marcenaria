@@ -10,9 +10,12 @@ interface BudgetCommission {
     clientName: string;
     projectName: string;
     grandTotal: number;
-    developerCommission: number;
+    finalValue?: number;
+    finalBudgetPrice?: number;
+    developerCommission?: number;
     commissionStatus?: string;
     status: string;
+    createdAt?: string;
     [key: string]: any;
 }
 
@@ -20,6 +23,21 @@ interface CommissionsProps {
     db: Firestore | null;
     setCurrentPage: (page: string) => void;
 }
+
+// Comissão do desenvolvedor: 1% do valor final pago pelo cliente
+const COMMISSION_RATE = 0.01;
+
+// Status que geram comissão ("Em Produção" e "Concluído" existem em orçamentos antigos)
+const COMMISSION_STATUSES = ["Aprovado", "Em Produção", "Concluído", "Pago"];
+
+// Valor que o cliente paga (já com desconto ou preço forçado). Os fallbacks cobrem orçamentos antigos.
+const getBudgetValue = (b: BudgetCommission) => Number(b.finalValue ?? b.finalBudgetPrice ?? b.grandTotal) || 0;
+
+const calcCommission = (b: BudgetCommission) => Math.round(getBudgetValue(b) * COMMISSION_RATE * 100) / 100;
+
+// Comissão já paga fica congelada no valor gravado; a pendente acompanha o valor atual do orçamento
+const getCommission = (b: BudgetCommission) =>
+    b.commissionStatus === 'Pago' && (b.developerCommission ?? 0) > 0 ? b.developerCommission! : calcCommission(b);
 
 const Commissions: React.FC<CommissionsProps> = ({ db, setCurrentPage }) => {
     const [budgets, setBudgets] = useState<BudgetCommission[]>([]);
@@ -30,17 +48,16 @@ const Commissions: React.FC<CommissionsProps> = ({ db, setCurrentPage }) => {
             if (!db) return;
             setLoading(true);
             try {
-                // Query: Traz apenas orçamentos aprovados/concluídos que geram comissão
-                const q = query(
-                    collection(db, "budgets"), 
-                    where("developerCommission", ">", 0),
-                    where("status", "in", ["Aprovado", "Em Produção", "Concluído", "Pago"]) // Adicionei "Pago" por segurança
-                );
+                // Query: Traz apenas orçamentos aprovados/concluídos; a comissão é calculada aqui
+                const q = query(collection(db, "budgets"), where("status", "in", COMMISSION_STATUSES));
 
                 const querySnapshot = await getDocs(q);
-                let budgetsData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BudgetCommission));
-                
-                budgetsData.sort((a, b) => Number(b.budgetId || 0) - Number(a.budgetId || 0));
+                const budgetsData = querySnapshot.docs
+                    .map(doc => ({ id: doc.id, ...doc.data() } as BudgetCommission))
+                    .filter(b => getCommission(b) > 0);
+
+                budgetsData.sort((a, b) => Number(b.budgetId || 0) - Number(a.budgetId || 0)
+                    || String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
                 setBudgets(budgetsData);
 
             } catch (error) {
@@ -54,15 +71,19 @@ const Commissions: React.FC<CommissionsProps> = ({ db, setCurrentPage }) => {
         fetchBudgetsWithCommission();
     }, [db]);
 
-    const handleCommissionStatusChange = async (id: string, newStatus: string) => {
+    const handleCommissionStatusChange = async (budget: BudgetCommission, newStatus: string) => {
         if (!db) return;
         const toastId = toast.loading('Atualizando status...');
+        // Ao marcar como pago, grava o valor para ele não mudar se o orçamento for editado depois
+        const changes = newStatus === 'Pago'
+            ? { commissionStatus: newStatus, developerCommission: calcCommission(budget) }
+            : { commissionStatus: newStatus };
         try {
-            const budgetRef = doc(db, 'budgets', id);
-            await updateDoc(budgetRef, { commissionStatus: newStatus });
-            
-            setBudgets(currentBudgets => 
-                currentBudgets.map(b => b.id === id ? { ...b, commissionStatus: newStatus } : b)
+            const budgetRef = doc(db, 'budgets', budget.id);
+            await updateDoc(budgetRef, changes);
+
+            setBudgets(currentBudgets =>
+                currentBudgets.map(b => b.id === budget.id ? { ...b, ...changes } : b)
             );
             toast.success('Status da comissão atualizado!', { id: toastId });
         } catch (error) {
@@ -74,7 +95,7 @@ const Commissions: React.FC<CommissionsProps> = ({ db, setCurrentPage }) => {
     // Cálculo dos totais
     const commissionTotals = useMemo(() => {
         return budgets.reduce((acc, budget) => {
-            const commission = budget.developerCommission || 0;
+            const commission = getCommission(budget);
             if (budget.commissionStatus === 'Pago') {
                 acc.paid += commission;
             } else {
@@ -134,19 +155,20 @@ const Commissions: React.FC<CommissionsProps> = ({ db, setCurrentPage }) => {
                                             <div className="flex flex-col">
                                                 <strong className="text-gray-900 font-bold text-lg">#{b.budgetId} - {b.clientName}</strong>
                                                 <span className="text-sm text-gray-500">{b.projectName}</span>
+                                                <span className="text-sm text-gray-600 mt-1">Valor: <strong>{formatCurrency(getBudgetValue(b))}</strong></span>
                                             </div>
                                         </div>
 
                                         <div className="flex justify-between items-center pl-2 mt-4 bg-gray-50 p-3 rounded-xl border border-gray-100">
                                             <div className="flex flex-col">
                                                 <span className="text-xs font-bold text-gray-400 uppercase">Comissão (1%)</span>
-                                                <span className="text-xl font-extrabold text-blue-600">{formatCurrency(b.developerCommission)}</span>
+                                                <span className="text-xl font-extrabold text-blue-600">{formatCurrency(getCommission(b))}</span>
                                             </div>
-                                            
+
                                             {/* Select de Status Gigante para Mobile */}
-                                            <select 
+                                            <select
                                                 value={b.commissionStatus || 'Não Pago'}
-                                                onChange={(e) => handleCommissionStatusChange(b.id, e.target.value)}
+                                                onChange={(e) => handleCommissionStatusChange(b, e.target.value)}
                                                 className={`h-12 px-4 rounded-xl font-bold text-sm appearance-none border-2 outline-none cursor-pointer
                                                     ${b.commissionStatus === 'Pago' 
                                                         ? 'bg-emerald-50 text-emerald-700 border-emerald-200 focus:border-emerald-500' 
@@ -183,12 +205,12 @@ const Commissions: React.FC<CommissionsProps> = ({ db, setCurrentPage }) => {
                                                         <span className="text-xs text-gray-500">{b.projectName}</span>
                                                     </div>
                                                 </td>
-                                                <td className="p-4 text-gray-600 text-right">{formatCurrency(b.grandTotal)}</td>
-                                                <td className="p-4 font-extrabold text-blue-600 text-right">{formatCurrency(b.developerCommission)}</td>
+                                                <td className="p-4 text-gray-600 text-right">{formatCurrency(getBudgetValue(b))}</td>
+                                                <td className="p-4 font-extrabold text-blue-600 text-right">{formatCurrency(getCommission(b))}</td>
                                                 <td className="p-4 text-center">
-                                                    <select 
+                                                    <select
                                                         value={b.commissionStatus || 'Não Pago'}
-                                                        onChange={(e) => handleCommissionStatusChange(b.id, e.target.value)}
+                                                        onChange={(e) => handleCommissionStatusChange(b, e.target.value)}
                                                         className={`px-4 py-2 rounded-lg font-bold text-sm appearance-none border outline-none cursor-pointer
                                                             ${b.commissionStatus === 'Pago' 
                                                                 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
